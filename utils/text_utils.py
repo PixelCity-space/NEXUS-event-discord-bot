@@ -1,25 +1,26 @@
 import re
 import unicodedata
+from typing import Any
 
-def slugify(text):
+def slugify(text: Any, separator: str = "_") -> str:
     """
-    Converts to lowercase, removes non-word characters (alphanumerics and underscores)
-    and converts spaces to hyphens. Also strips leading and trailing whitespace.
-    Handles accents by converting to their ASCII equivalents.
+    Converts text to a safe lowercase ASCII slug, removing accents and non-alphanumeric characters,
+    joining words with the specified separator ('_' by default, or '-').
     """
+    if text is None:
+        return ""
+
     # 1. Normalize to NFKD to separate accents from base characters
-    text = unicodedata.normalize('NFKD', str(text))
-    
+    text_str = unicodedata.normalize('NFKD', str(text))
+
     # 2. Encode to ASCII and ignore characters that can't be converted (accents)
-    text = text.encode('ascii', 'ignore').decode('ascii')
-    
-    # 3. Lowercase
-    text = text.lower()
-    
-    # 4. Remove everything that isn't a word character or a space/hyphen
-    text = re.sub(r'[^\w\s-]', '', text)
-    
-    # 5. Replace whitespace and underscores with single hyphens
-    text = re.sub(r'[-\s_]+', '-', text).strip('-')
-    
-    return text
+    text_str = text_str.encode('ascii', 'ignore').decode('ascii')
+
+    # 3. Lowercase and strip whitespace
+    text_str = text_str.lower().strip()
+
+    # 4. Replace non-alphanumeric character sequences with the separator
+    text_str = re.sub(r'[^a-z0-9]+', separator, text_str)
+
+    # 5. Remove leading and trailing separators
+    return text_str.strip(separator)

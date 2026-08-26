@@ -1,17 +1,4 @@
-import unicodedata
-import re
-
-def slugify(text: str) -> str:
-    """Converts a string to a safe ASCII slug (lowercase, underscores, no accents)."""
-    # Normalize to NFD to separate accents (e.g. á -> a + ´)
-    text = unicodedata.normalize('NFD', text)
-    # Filter out non-ASCII characters (accents)
-    text = "".join([c for c in text if not unicodedata.combining(c)])
-    # Lowercase and replace anything non-alphanumeric with underscores
-    text = text.lower().strip()
-    text = re.sub(r'[^a-z0-9]+', '_', text)
-    # Remove leading/trailing underscores
-    return text.strip('_')
+from .text_utils import slugify
 
 def parse_emoji_config(text_value: str):
     """Parses a text block into a list of option dicts.

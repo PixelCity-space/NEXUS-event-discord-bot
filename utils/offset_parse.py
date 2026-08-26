@@ -3,8 +3,8 @@
 import datetime
 import re
 
-
-def parse_offset(offset_str):
+def parse_offset(offset_str: str) -> datetime.timedelta:
+    """Parses duration string (e.g., '15m', '2h', '1d') into a datetime.timedelta object."""
     match = re.match(r"^(\d+)([mhd])$", str(offset_str).strip().lower())
     if not match:
         return datetime.timedelta(hours=1)
