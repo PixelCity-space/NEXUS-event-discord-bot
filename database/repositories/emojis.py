@@ -3,7 +3,7 @@ import json
 from ..connection import get_pool
 
 async def save_emoji_set(
-    guild_id: int | str, 
+    guild_id: str, 
     set_id: str, 
     name: str, 
     data: dict[str, Any] | list[Any]
@@ -19,7 +19,7 @@ async def save_emoji_set(
             data = EXCLUDED.data
     """, str(guild_id), set_id, name, data_json)
 
-async def get_emoji_sets(guild_id: int | str) -> list[Any]:
+async def get_emoji_sets(guild_id: str) -> list[Any]:
     """Fetches all emoji sets for a specific guild."""
     pool = await get_pool()
     return await pool.fetch("SELECT * FROM guild_emoji_sets WHERE guild_id = $1", str(guild_id))
@@ -29,7 +29,7 @@ async def get_all_custom_emoji_sets() -> list[Any]:
     pool = await get_pool()
     return await pool.fetch("SELECT * FROM guild_emoji_sets")
 
-async def delete_emoji_set(guild_id: int | str, set_id: str) -> None:
+async def delete_emoji_set(guild_id: str, set_id: str) -> None:
     """Deletes a guild-specific emoji set."""
     pool = await get_pool()
     await pool.execute("DELETE FROM guild_emoji_sets WHERE guild_id = $1 AND set_id = $2", str(guild_id), set_id)

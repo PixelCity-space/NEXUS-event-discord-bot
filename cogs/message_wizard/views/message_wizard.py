@@ -12,10 +12,10 @@ from ..modals.message_edit import MessageEditModal
 class MessageWizardView(ui.LayoutView):
     """Admin interactive UI to manage and override server message translations."""
     
-    def __init__(self, bot: discord.Client, guild_id: int | str, selected_key: Optional[str] = None):
+    def __init__(self, bot: discord.Client, guild_id: str, selected_key: Optional[str] = None):
         super().__init__(timeout=600)
         self.bot = bot
-        self.guild_id = guild_id
+        self.guild_id = str(guild_id)
         self.selected_category: str = "Notifications"
         self.selected_key = selected_key
 

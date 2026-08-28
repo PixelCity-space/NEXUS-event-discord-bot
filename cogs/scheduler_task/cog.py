@@ -24,25 +24,37 @@ class SchedulerTask(commands.Cog):
     async def check_events(self):
         """Main minute-loop iterating through all active events to trigger periodic jobs."""
         now = time.time()
-        active_events = await database.get_all_active_events()
+        active_events = await database.get_active_events()
+        if not active_events:
+            return
+
+        # PERF-001: Prefetch all active event reminders in a single O(1) batch query
+        try:
+            active_reminders_map = await database.get_all_active_reminders_batch()
+        except Exception as e:
+            log.error("[Scheduler] Failed to prefetch active reminders batch: %s", e)
+            active_reminders_map = {}
 
         for db_event in active_events:
+            eid = db_event["event_id"]
+
             # 1. Lobby Expiration
             try:
                 await handle_lobby_expiry(self.bot, db_event, now)
             except Exception as e:
                 log.error(
-                    f"[Scheduler] Lobby expiry error for {db_event['event_id']}: {e}",
+                    "[Scheduler] Lobby expiry error for %s: %s", eid, e,
                     guild_id=db_event.get("guild_id"),
                 )
 
-            # 2. Multi-slot Reminders
+            # 2. Multi-slot Reminders (using preloaded batch data)
             try:
-                await handle_reminders(self.bot, db_event, now)
+                preloaded = active_reminders_map.get(eid, [])
+                await handle_reminders(self.bot, db_event, now, preloaded_reminders=preloaded)
             except Exception as e:
                 log.error(
-                    f"[Scheduler] Error handling reminders for {db_event['event_id']}: {e}", 
-                    guild_id=db_event.get("guild_id")
+                    "[Scheduler] Error handling reminders for %s: %s", eid, e,
+                    guild_id=db_event.get("guild_id"),
                 )
 
             # 3. Temporary Role Cleanup
@@ -50,8 +62,8 @@ class SchedulerTask(commands.Cog):
                 await check_role_cleanup(self.bot, db_event, now)
             except Exception as e:
                 log.error(
-                    f"[Scheduler] Error cleaning roles for {db_event['event_id']}: {e}", 
-                    guild_id=db_event.get("guild_id")
+                    "[Scheduler] Error cleaning roles for %s: %s", eid, e,
+                    guild_id=db_event.get("guild_id"),
                 )
 
             # 4. Series Recurring Reposting
@@ -59,8 +71,8 @@ class SchedulerTask(commands.Cog):
                 await handle_reposting(self.bot, db_event, now)
             except Exception as e:
                 log.error(
-                    f"[Scheduler] Error handling reposting for {db_event['event_id']}: {e}", 
-                    guild_id=db_event.get("guild_id")
+                    "[Scheduler] Error handling reposting for %s: %s", eid, e,
+                    guild_id=db_event.get("guild_id"),
                 )
 
             # 5. Event Lifecycle Completion / Auto-archive
@@ -68,8 +80,8 @@ class SchedulerTask(commands.Cog):
                 await handle_event_completion(self.bot, db_event, now)
             except Exception as e:
                 log.error(
-                    f"[Scheduler] Error handling completion for {db_event['event_id']}: {e}", 
-                    guild_id=db_event.get("guild_id")
+                    "[Scheduler] Error handling completion for %s: %s", eid, e,
+                    guild_id=db_event.get("guild_id"),
                 )
 
     @check_events.before_loop

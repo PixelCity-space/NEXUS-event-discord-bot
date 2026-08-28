@@ -47,7 +47,7 @@ async def search_events_autocomplete(
     """
     Unified autocomplete search for active events and series for a guild.
     """
-    active_events = await database.get_all_active_events(guild_id)
+    active_events = await database.get_active_events(guild_id)
     series: dict[str, list[dict[str, Any]]] = {}
     single_events: list[dict[str, Any]] = []
 
@@ -111,21 +111,15 @@ async def remove_events_with_cleanup(
                 if channel:
                     msg = await channel.fetch_message(int(msg_id))
                     if msg:
-                        from cogs.event_ui import DynamicEventView
-                        ev_conf = dict(ev)
-                        ev_conf["status"] = "deleted"
-                        view = DynamicEventView(bot, eid, ev_conf)
-                        await view.prepare()
-                        for child in view.children:
-                            if isinstance(child, discord.ui.Container):
-                                for row in child.children:
-                                    if isinstance(row, discord.ui.ActionRow):
-                                        for item in row.children:
-                                            if isinstance(item, discord.ui.Button):
-                                                item.disabled = True
-                        await msg.edit(view=view)
+                        try:
+                            view = discord.ui.View.from_message(msg)
+                            for child in view.children:
+                                child.disabled = True
+                            await msg.edit(view=view)
+                        except Exception:
+                            await msg.edit(view=None)
             except Exception as e:
-                log.warning(f"[EventService] Could not update card for {eid}: {e}")
+                log.warning("[EventService] Could not update card for %s: %s", eid, e)
 
         # 2. Temp role deletion
         temp_role_id = ev.get("temp_role_id")
@@ -136,9 +130,9 @@ async def remove_events_with_cleanup(
                     if role:
                         reason = f"Event {eid} removed by {actor}" if actor else f"Event {eid} removed"
                         await role.delete(reason=reason)
-                        log.info(f"[EventService] Deleted temp role {temp_role_id} for event {eid}")
+                        log.info("[EventService] Deleted temp role %s for event %s", temp_role_id, eid)
                 except Exception as e:
-                    log.error(f"[EventService] Failed to delete role {temp_role_id}: {e}")
+                    log.error("[EventService] Failed to delete role %s: %s", temp_role_id, e)
 
         # 3. Database deletion
         await database.delete_active_event(eid, guild_id)

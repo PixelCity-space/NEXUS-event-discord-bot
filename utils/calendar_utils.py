@@ -1,8 +1,6 @@
 import urllib.parse
 import datetime
 import time
-from dateutil.relativedelta import relativedelta
-from dateutil import tz as dttz
 
 from services.recurrence_service import compute_next_occurrence
 

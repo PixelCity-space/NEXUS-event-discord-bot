@@ -18,7 +18,7 @@ class ReminderOffsetModal(ui.Modal):
             
         self.inp = ui.TextInput(
             label=t("LBL_REMINDER_OFFSETS_PARAGRAPH", guild_id=wizard_view.guild_id),
-            placeholder="15m,dm\n1h,ping,All\n2d,dm,Tank",
+            placeholder=t("PH_REMINDER_OFFSETS", guild_id=wizard_view.guild_id),
             default=dflt,
             style=discord.TextStyle.paragraph,
             max_length=400,

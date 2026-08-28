@@ -60,7 +60,7 @@ class AdminCommands(commands.GroupCog, name="admin"):
 
     @admin_check_noshow.autocomplete("event_id")
     async def check_noshow_autocomplete(self, interaction: discord.Interaction, current: str):
-        events = await database.get_all_active_events(interaction.guild_id)
+        events = await database.get_active_events(interaction.guild_id)
         choices = []
         for e in events:
             label = f"{e['title']} ({e['event_id']})"

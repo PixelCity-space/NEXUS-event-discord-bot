@@ -1,220 +1,122 @@
-from typing import Optional
-import json
+from typing import Optional, AsyncIterator
+from contextlib import asynccontextmanager
+import re
+from pathlib import Path
 import asyncpg
 from utils.logger import log
 
-_pool: Optional[asyncpg.Pool] = None
 DEFAULT_TIMEZONE: str = 'UTC'
 MAX_EVENT_REMINDERS: int = 5
+MIGRATIONS_DIR: Path = Path(__file__).parent / "migrations"
+
+
+class DatabaseManager:
+    """
+    Manages PostgreSQL connection pool lifecycle, transactions, and migrations.
+    Encapsulates connection state and supports dependency injection and test mocking.
+    """
+
+    def __init__(self, pool: Optional[asyncpg.Pool] = None) -> None:
+        self._pool: Optional[asyncpg.Pool] = pool
+
+    @property
+    def is_initialized(self) -> bool:
+        """Returns True if the database pool has been created and assigned."""
+        return self._pool is not None
+
+    def set_pool(self, pool: asyncpg.Pool) -> None:
+        """Assigns the active asyncpg connection pool."""
+        self._pool = pool
+
+    def get_pool(self) -> asyncpg.Pool:
+        """Returns the active pool, raising RuntimeError if not initialized."""
+        if self._pool is None:
+            raise RuntimeError("Database pool is not initialized. Call init_database() first.")
+        return self._pool
+
+    @asynccontextmanager
+    async def acquire(self) -> AsyncIterator[asyncpg.Connection]:
+        """Acquires a connection from the pool as an async context manager."""
+        pool = self.get_pool()
+        async with pool.acquire() as conn:
+            yield conn
+
+    async def close(self) -> None:
+        """Gracefully closes all connections in the pool."""
+        if self._pool:
+            log.info("Closing PostgreSQL connection pool...")
+            await self._pool.close()
+            self._pool = None
+            log.info("PostgreSQL connection pool closed.")
+
+    async def run_migrations(self, conn: Optional[asyncpg.Connection] = None) -> None:
+        """Discovers and applies pending SQL migrations in atomic transactions."""
+        if conn is not None:
+            await self._execute_migrations(conn)
+        else:
+            async with self.acquire() as connection:
+                await self._execute_migrations(connection)
+
+    async def _execute_migrations(self, conn: asyncpg.Connection) -> None:
+        # 1. Ensure schema_migrations table exists
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )
+        """)
+
+        # 2. Fetch already applied versions
+        rows = await conn.fetch("SELECT version FROM schema_migrations")
+        applied_versions = {int(r["version"]) for r in rows}
+
+        # 3. Discover migration files
+        if not MIGRATIONS_DIR.exists():
+            log.warning("Migrations directory not found: %s", MIGRATIONS_DIR)
+            return
+
+        migration_files: list[tuple[int, str, Path]] = []
+        for file_path in MIGRATIONS_DIR.glob("*.sql"):
+            match = re.match(r"^(\d+)_(.+)\.sql$", file_path.name)
+            if match:
+                version = int(match.group(1))
+                name = match.group(2)
+                migration_files.append((version, name, file_path))
+
+        # Sort migrations sequentially by version
+        migration_files.sort(key=lambda x: x[0])
+
+        # 4. Apply pending migrations in atomic transactions
+        for version, name, file_path in migration_files:
+            if version not in applied_versions:
+                log.info("[DB Migration] Applying migration %03d_%s...", version, name)
+                sql_content = file_path.read_text(encoding="utf-8")
+                async with conn.transaction():
+                    await conn.execute(sql_content)
+                    await conn.execute(
+                        "INSERT INTO schema_migrations (version, name) VALUES ($1, $2)",
+                        version,
+                        name,
+                    )
+                log.info("[DB Migration] Successfully applied migration %03d_%s.", version, name)
+
+
+# Global singleton instance for bot runtime and repository delegation
+db_manager = DatabaseManager()
+
 
 async def set_pool(pool: asyncpg.Pool) -> None:
     """Assigns the global database connection pool."""
-    global _pool
-    _pool = pool
+    db_manager.set_pool(pool)
+
 
 async def get_pool() -> asyncpg.Pool:
     """Returns the initialized database connection pool."""
-    global _pool
-    if not _pool:
-        raise Exception("Database pool is not initialized.")
-    return _pool
+    return db_manager.get_pool()
 
-async def _migrate_legacy_reminders(conn: asyncpg.Connection) -> None:
-    """Migrates legacy reminder fields into the event_reminders table."""
-    await conn.execute("""
-        INSERT INTO event_reminders (event_id, slot_idx, offset_str, sent)
-        SELECT event_id, 0,
-               COALESCE(NULLIF(TRIM(reminder_offset), ''), '15m'),
-               COALESCE(reminder_sent, 0)
-        FROM active_events ae
-        WHERE COALESCE(NULLIF(TRIM(reminder_type), ''), 'none') <> 'none'
-        AND NOT EXISTS (SELECT 1 FROM event_reminders er WHERE er.event_id = ae.event_id)
-    """)
-    rows = await conn.fetch(
-        "SELECT event_id, extra_data FROM active_events WHERE extra_data IS NOT NULL AND LENGTH(TRIM(extra_data)) > 0"
-    )
-    for r in rows:
-        eid = r["event_id"]
-        raw = r["extra_data"]
-        try:
-            ed = json.loads(raw) if isinstance(raw, str) else raw
-            if not isinstance(ed, dict):
-                continue
-            msg = (ed.get("custom_reminder_msg") or "").strip()
-            if not msg:
-                continue
-            await conn.execute(
-                """
-                UPDATE active_events SET reminder_message = $1
-                WHERE event_id = $2 AND (reminder_message IS NULL OR LENGTH(TRIM(reminder_message)) = 0)
-                """,
-                msg,
-                eid,
-            )
-        except Exception as e:
-            log.debug("migrate reminder_message %s: %s", eid, e)
 
 async def init_db() -> None:
-    """Initializes all PostgreSQL tables, indexes, and applies schema migrations."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        # Table for active and scheduled events
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS active_events (
-                event_id TEXT PRIMARY KEY,
-                config_name TEXT,
-                message_id BIGINT,
-                channel_id BIGINT,
-                start_time DOUBLE PRECISION,
-                status TEXT DEFAULT 'active',
-                title TEXT,
-                description TEXT,
-                image_urls TEXT,
-                color TEXT,
-                max_accepted INTEGER,
-                ping_role BIGINT,
-                end_time DOUBLE PRECISION,
-                recurrence_type TEXT,
-                repost_trigger TEXT,
-                repost_offset TEXT,
-                timezone TEXT DEFAULT 'Europe/Budapest',
-                creator_id TEXT,
-                reminder_type TEXT DEFAULT 'none',
-                reminder_offset TEXT DEFAULT '15m',
-                reminder_sent INTEGER DEFAULT 0,
-                recurrence_limit INTEGER DEFAULT 0,
-                recurrence_count INTEGER DEFAULT 0,
-                icon_set TEXT DEFAULT 'standard',
-                extra_data TEXT,
-                guild_id TEXT,
-                temp_role_id BIGINT,
-                use_temp_role BOOLEAN DEFAULT FALSE
-            )
-        """)
-        
-        for stmt in (
-            "ALTER TABLE active_events ADD COLUMN IF NOT EXISTS temp_role_id BIGINT",
-            "ALTER TABLE active_events ADD COLUMN IF NOT EXISTS use_temp_role BOOLEAN DEFAULT FALSE",
-        ):
-            try:
-                await conn.execute(stmt)
-            except Exception as e:
-                log.debug("init_db optional ALTER skipped: %s", e)
-        
-        # Table for event signups (RSVPs) and attendance
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS rsvps (
-                event_id TEXT,
-                user_id BIGINT,
-                status TEXT,
-                joined_at DOUBLE PRECISION,
-                attendance TEXT DEFAULT 'present',
-                PRIMARY KEY (event_id, user_id)
-            )
-        """)
-
-        # Table for saving unfinished event drafts
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS event_drafts (
-                draft_id TEXT PRIMARY KEY,
-                creator_id TEXT,
-                title TEXT,
-                data JSONB,
-                updated_at DOUBLE PRECISION,
-                guild_id TEXT
-            )
-        """)
-
-        # Table for custom emoji sets per guild
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS guild_emoji_sets (
-                guild_id TEXT,
-                set_id TEXT,
-                name TEXT,
-                data JSONB,
-                PRIMARY KEY (guild_id, set_id)
-            )
-        """)
-
-        # Table for per-guild translation string overrides
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS guild_translations (
-                guild_id TEXT,
-                key TEXT,
-                value TEXT,
-                PRIMARY KEY (guild_id, key)
-            )
-        """)
-
-        # Table for per-guild configuration and defaults
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS guild_settings (
-                guild_id TEXT,
-                key TEXT,
-                value TEXT,
-                PRIMARY KEY (guild_id, key)
-            )
-        """)
-
-        # Table for global bot settings (Master Admin only)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS global_settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            )
-        """)
-
-        # Table for multiple reminder offsets per event
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS event_reminders (
-                event_id TEXT NOT NULL,
-                slot_idx SMALLINT NOT NULL,
-                offset_str TEXT NOT NULL,
-                method TEXT,
-                custom_message TEXT,
-                sent INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (event_id, slot_idx),
-                CHECK (slot_idx >= 0 AND slot_idx < 5)
-            )
-        """)
-
-        for col_name, dt in [("method", "TEXT"), ("custom_message", "TEXT"), ("target", "TEXT DEFAULT 'coming'")]:
-            try:
-                await conn.execute(f"ALTER TABLE event_reminders ADD COLUMN IF NOT EXISTS {col_name} {dt}")
-            except Exception as e:
-                log.debug(f"init_db event_reminders {col_name} column: {e}")
-
-        try:
-            await conn.execute(
-                "ALTER TABLE active_events ADD COLUMN IF NOT EXISTS reminder_message TEXT"
-            )
-        except Exception as e:
-            log.debug("init_db reminder_message column: %s", e)
-
-        try:
-            await conn.execute(
-                "ALTER TABLE active_events ADD COLUMN IF NOT EXISTS rsvp_allowed_role_ids TEXT DEFAULT ''"
-            )
-        except Exception as e:
-            log.debug("init_db rsvp_allowed_role_ids column: %s", e)
-
-        for lobby_sql in (
-            "ALTER TABLE active_events ADD COLUMN IF NOT EXISTS lobby_mode BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE active_events ADD COLUMN IF NOT EXISTS lobby_expires_at DOUBLE PRECISION",
-            "ALTER TABLE active_events ADD COLUMN IF NOT EXISTS lobby_remind_on_fill BOOLEAN DEFAULT TRUE",
-        ):
-            try:
-                await conn.execute(lobby_sql)
-            except Exception as e:
-                log.debug("init_db lobby column: %s", e)
-
-        await _migrate_legacy_reminders(conn)
-
-        # Table for global emoji sets
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS global_emoji_sets (
-                set_id TEXT PRIMARY KEY,
-                name TEXT,
-                data TEXT
-            )
-        """)
+    """Initializes database schema and executes all pending migrations."""
+    await db_manager.run_migrations()
+    log.info("Database schema initialized and up-to-date.")

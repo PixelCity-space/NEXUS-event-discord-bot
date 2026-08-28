@@ -67,6 +67,29 @@ async def get_event_reminders(event_id: str) -> list[Any]:
         event_id,
     )
 
+async def get_all_active_reminders_batch() -> dict[str, list[dict[str, Any]]]:
+    """
+    Fetches all pending reminder slots for all active events in a single batch query (O(1) instead of O(N)).
+    Returns a dictionary mapping event_id -> list of reminder slot dicts.
+    """
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT er.event_id, er.slot_idx, er.offset_str, er.method, er.target, er.custom_message, er.sent
+        FROM event_reminders er
+        JOIN active_events ae ON er.event_id = ae.event_id
+        WHERE ae.status IN ('active', 'rescheduled')
+        ORDER BY er.event_id, er.slot_idx ASC
+        """
+    )
+    mapping: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        eid = str(r["event_id"])
+        if eid not in mapping:
+            mapping[eid] = []
+        mapping[eid].append(dict(r))
+    return mapping
+
 async def replace_event_reminders(event_id: str, reminders: list[dict[str, Any]]) -> None:
     """Replaces reminder slots for an event while preserving 'sent' status if offset has not changed."""
     rems = reminders[:MAX_EVENT_REMINDERS]
@@ -140,7 +163,7 @@ async def mark_all_reminder_slots_sent(event_id: str) -> None:
         "UPDATE active_events SET reminder_sent = 1 WHERE event_id = $1", event_id
     )
 
-async def mark_reminder_sent(event_id: str, guild_id: Optional[int | str] = None) -> None:
+async def mark_reminder_sent(event_id: str, guild_id: Optional[str] = None) -> None:
     """Legacy reminder sent flag update on active_events."""
     pool = await get_pool()
     if guild_id:

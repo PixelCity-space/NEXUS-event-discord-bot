@@ -40,13 +40,13 @@ class SingleEventModal(ui.Modal):
             self.max_acc_input = None
             self.start_input = ui.TextInput(
                 label=t("LBL_WIZ_START", guild_id=guild_id),
-                placeholder="2026-05-15 18:00",
+                placeholder=t("PH_POSTPONE_START_EXAMPLE", guild_id=guild_id),
                 default=str(data.get("start_str") or ""),
                 required=True,
             )
             self.end_input = ui.TextInput(
                 label=t("LBL_WIZ_END", guild_id=guild_id),
-                placeholder="2026-05-15 20:00",
+                placeholder=t("PH_POSTPONE_END_EXAMPLE", guild_id=guild_id),
                 default=str(data.get("end_str") or ""),
                 required=False,
             )
@@ -118,13 +118,13 @@ class Step1Modal(ui.Modal):
         )
         self.start_input = ui.TextInput(
             label=t("LBL_WIZ_START", guild_id=guild_id),
-            placeholder="2026-05-15 18:00",
+            placeholder=t("PH_POSTPONE_START_EXAMPLE", guild_id=guild_id),
             default=str(data.get("start_str") or ""),
             required=True,
         )
         self.end_input = ui.TextInput(
             label=t("LBL_WIZ_END", guild_id=guild_id),
-            placeholder="2026-05-15 20:00",
+            placeholder=t("PH_POSTPONE_END_EXAMPLE", guild_id=guild_id),
             default=str(data.get("end_str") or ""),
             required=False,
         )

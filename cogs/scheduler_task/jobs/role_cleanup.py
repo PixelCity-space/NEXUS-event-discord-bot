@@ -2,6 +2,7 @@ from typing import Any
 import discord
 import database
 from utils.logger import log
+from utils.enums import EventStatus
 
 async def check_role_cleanup(bot: discord.Client, db_event: dict[str, Any], now: float) -> None:
     """Deletes temporary Discord roles once the event has finished or been cancelled/closed."""
@@ -12,10 +13,10 @@ async def check_role_cleanup(bot: discord.Client, db_event: dict[str, Any], now:
     should_delete = False
     end_ts = db_event.get("end_time")
     start_ts = db_event.get("start_time")
-    status = db_event.get("status") or "active"
+    status = db_event.get("status") or EventStatus.ACTIVE
     lobby_mode = bool(db_event.get("lobby_mode"))
 
-    if status in ("closed", "cancelled", "deleted", "lobby_expired"):
+    if status in (EventStatus.CLOSED, EventStatus.CANCELLED, EventStatus.DELETED, EventStatus.LOBBY_EXPIRED, EventStatus.ENDED):
         should_delete = True
     elif lobby_mode:
         if start_ts is None:
@@ -35,15 +36,15 @@ async def check_role_cleanup(bot: discord.Client, db_event: dict[str, Any], now:
         guild = bot.get_guild(int(db_event["guild_id"]))
         if guild:
             if not guild.me.guild_permissions.manage_roles:
-                log.warning(f"[Scheduler] Missing 'Manage Roles' permission to delete role {temp_role_id} in guild {guild.id}")
+                log.warning("[Scheduler] Missing 'Manage Roles' permission to delete role %s in guild %s", temp_role_id, guild.id)
             else:
                 try:
                     role = guild.get_role(int(temp_role_id))
                     if role:
                         await role.delete(reason=f"Event {db_event['event_id']} finished/closed.")
-                        log.info(f"[Scheduler] Deleted temp role {temp_role_id} for event {db_event['event_id']}")
+                        log.info("[Scheduler] Deleted temp role %s for event %s", temp_role_id, db_event["event_id"])
                 except Exception as e:
-                    log.error(f"[Scheduler] Failed to delete role {temp_role_id}: {e}")
+                    log.error("[Scheduler] Failed to delete role %s: %s", temp_role_id, e)
         
         # Clear from DB to prevent re-attempts even if permission was missing
         pool = await database.get_pool()

@@ -46,4 +46,4 @@ def set_log_level(level_name):
     log.logger.setLevel(level)
     for handler in log.logger.handlers:
         handler.setLevel(level)
-    log.info(f"Logging level set to {level_name.upper()}")
+    log.info("Logging level set to %s", level_name.upper())

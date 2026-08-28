@@ -1,6 +1,3 @@
-import io
-import csv
-import time
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -9,7 +6,7 @@ from utils.auth import is_admin, is_master
 from utils.i18n import t, load_guild_translations
 from utils.logger import log
 from utils.config import config
-from utils.calendar_utils import generate_ics_batch
+from utils.enums import EventStatus
 from ..helpers import handle_status_change
 from ..views.my_events import MyEventsView
 from ..views.history import EventHistoryView
@@ -123,7 +120,7 @@ class EventCommands(commands.Cog, name="EventCommands"):
             await interaction.response.send_message(t("ERR_ADMIN_ONLY"), ephemeral=True)
             return
 
-        events = await database.get_all_active_events(interaction.guild_id)
+        events = await database.get_active_events(interaction.guild_id)
         if not events: 
             return await interaction.response.send_message(t("ERR_NO_ACTIVE_EVENTS", guild_id=interaction.guild_id), ephemeral=True)
 
@@ -139,15 +136,15 @@ class EventCommands(commands.Cog, name="EventCommands"):
 
     @event_group.command(name="cancel", description="Mark an event as CANCELLED")
     async def cancel_event(self, interaction: discord.Interaction, event_id: str, notify: str = "none", occurrence: int = None):
-        await handle_status_change(self.bot, interaction, event_id, "cancelled", notify, occurrence)
+        await handle_status_change(self.bot, interaction, event_id, EventStatus.CANCELLED, notify, occurrence)
 
     @event_group.command(name="postpone", description="Mark an event as POSTPONED")
     async def postpone_event(self, interaction: discord.Interaction, event_id: str, new_time: str = None, notify: str = "none", occurrence: int = None):
-        await handle_status_change(self.bot, interaction, event_id, "postponed", notify, occurrence, new_time)
+        await handle_status_change(self.bot, interaction, event_id, EventStatus.POSTPONED, notify, occurrence, new_time)
 
     @event_group.command(name="activate", description="Set a cancelled/postponed event back to ACTIVE")
     async def activate_event(self, interaction: discord.Interaction, event_id: str, occurrence: int = None):
-        await handle_status_change(self.bot, interaction, event_id, "active", "none", occurrence)
+        await handle_status_change(self.bot, interaction, event_id, EventStatus.ACTIVE, "none", occurrence)
 
     @event_group.command(name="sheets", description="Export all event data to CSV for Google Sheets")
     async def sheets_export(self, interaction: discord.Interaction):
@@ -190,7 +187,7 @@ class EventCommands(commands.Cog, name="EventCommands"):
         
         try:
             from services.export_service import generate_future_events_ics_file
-            events = await database.get_all_active_events(guild_id)
+            events = await database.get_active_events(guild_id)
             if not events:
                 return await interaction.followup.send(t("ERR_NO_ACTIVE_EVENTS", guild_id=guild_id), ephemeral=True)
             
@@ -232,7 +229,7 @@ class EventCommands(commands.Cog, name="EventCommands"):
         if not await is_admin(interaction):
             return await interaction.response.send_message(t("ERR_ADMIN_ONLY"), ephemeral=True)
             
-        await database.set_event_status(event_id, "closed")
+        await database.update_event_status(event_id, EventStatus.CLOSED)
         await interaction.response.send_message(t("MSG_EVENT_CLOSED", guild_id=interaction.guild_id, event_id=event_id), ephemeral=True)
 
     @event_end.autocomplete("event_id")

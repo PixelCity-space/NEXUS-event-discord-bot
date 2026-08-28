@@ -1,8 +1,7 @@
 import time
 import json
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-from utils.emojis import WARNING
+from typing import Dict, List, Optional
 from utils.emoji_utils import resolve_placeholders
 from utils.i18n import t
 from utils.logger import log

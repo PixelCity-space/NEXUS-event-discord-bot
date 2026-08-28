@@ -8,9 +8,9 @@ import database
 from utils.config import config
 from utils.logger import log, set_log_level
 from utils.i18n import t, load_guild_translations
-from utils.templates import ICON_SET_TEMPLATES, get_template_data
+from utils.templates import ICON_SET_TEMPLATES, get_template_data, load_custom_sets, get_event_conf
 from utils.presence import start_presence_task
-from cogs.event_ui import DynamicEventView, get_event_conf, load_custom_sets
+from cogs.event_ui import DynamicEventView
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
@@ -26,16 +26,19 @@ class EventBot(commands.Bot):
         super().__init__(command_prefix=config.command_prefix, intents=intents)
         self.config_obj = config
         self.master_guild_ids = config.master_guild_ids
+        self.db_manager = database.db_manager
+        self.db_pool = None
 
     async def _init_database(self):
         """Initializes PostgreSQL connection pool, schema, and factory default templates."""
         dsn = os.getenv("DATABASE_URL")
         if not dsn:
             log.error("DATABASE_URL is not set in .env! Cannot start bot.")
-            exit(1)
+            raise RuntimeError("DATABASE_URL is not set in .env! Cannot start bot.")
 
         try:
             pool = await asyncpg.create_pool(dsn)
+            self.db_pool = pool
             await database.set_pool(pool)
             await database.init_db()
             log.info("Successfully connected to PostgreSQL.")
@@ -54,10 +57,10 @@ class EventBot(commands.Bot):
                     if data:
                         await database.save_global_emoji_set(tid, name, data)
                         count += 1
-                log.info(f"Seeded {count} global emoji set(s) from templates.")
+                log.info("Seeded %d global emoji set(s) from templates.", count)
         except Exception as e:
-            log.error(f"Failed to connect to PostgreSQL: {e}")
-            exit(1)
+            log.error("Failed to connect to PostgreSQL: %s", e)
+            raise RuntimeError(f"Failed to initialize database: {e}") from e
 
     async def _load_extensions(self):
         """Loads global and master-restricted extension packages."""
@@ -75,16 +78,16 @@ class EventBot(commands.Bot):
         for ext in global_extensions:
             try:
                 await self.load_extension(ext)
-                log.info(f"Loaded extension: {ext}")
+                log.info("Loaded extension: %s", ext)
             except Exception as e:
-                log.error(f"Failed to load extension {ext}: {e}", exc_info=True)
+                log.error("Failed to load extension %s: %s", ext, e, exc_info=True)
 
         for ext in master_extensions:
             try:
                 await self.load_extension(ext)
-                log.info(f"Loaded master extension: {ext}")
+                log.info("Loaded master extension: %s", ext)
             except Exception as e:
-                log.error(f"Failed to load master extension {ext}: {e}", exc_info=True)
+                log.error("Failed to load master extension %s: %s", ext, e, exc_info=True)
 
         # Restrict master command group to configured master guilds
         if self.master_guild_ids:
@@ -94,12 +97,12 @@ class EventBot(commands.Bot):
                 for gid in self.master_guild_ids:
                     master_guild = discord.Object(id=gid)
                     self.tree.add_command(master_cog, guild=master_guild)
-                log.info(f"Master Hub isolated to guilds: {self.master_guild_ids} (Removed from Global)")
+                log.info("Master Hub isolated to guilds: %s (Removed from Global)", self.master_guild_ids)
 
     async def _load_persistent_views(self):
         """Pre-loads custom emoji sets and re-attaches views for all active events."""
         await load_custom_sets()
-        active_events = await database.get_all_active_events()
+        active_events = await database.get_active_events()
         for event in active_events:
             try:
                 conf = get_event_conf(event['config_name'])
@@ -107,7 +110,7 @@ class EventBot(commands.Bot):
                 await view.prepare()
                 self.add_view(view)
             except Exception as e:
-                log.error(f"Failed to load persistent view for event {event.get('event_id')}: {e}", guild_id=event.get('guild_id'))
+                log.error("Failed to load persistent view for event %s: %s", event.get('event_id'), e, guild_id=event.get('guild_id'))
 
     def _register_error_handler(self):
         """Registers the global application command error handler."""
@@ -120,7 +123,7 @@ class EventBot(commands.Bot):
                 else:
                     await interaction.response.send_message(msg, ephemeral=True)
             else:
-                log.error(f"[Error Handler] Unhandled error: {error}", exc_info=True)
+                log.error("[Error Handler] Unhandled error: %s", error, exc_info=True)
                 clean_err = str(error.__cause__ or error)
                 msg = t("ERR_WIZARD_GENERAL", guild_id=interaction.guild_id, e=clean_err)
                 try:
@@ -144,14 +147,26 @@ class EventBot(commands.Bot):
         log.info("Setup complete. Manual sync available via /master system sync.")
 
     async def on_ready(self):
-        log.info(f"Logged in as {self.user} (ID: {self.user.id})")
+        log.info("Logged in as %s (ID: %s)", self.user, self.user.id if self.user else "Unknown")
         log.info("Nexus Event Bot is ready and monitoring events.")
         log.info("------")
 
+    async def close(self):
+        """Gracefully closes database connection pool and discord client connection."""
+        log.info("Shutting down Nexus Event Bot...")
+        await self.db_manager.close()
+        await super().close()
+
 if __name__ == "__main__":
     if not TOKEN:
-        log.error("BOT_TOKEN is not set in .env")
-        exit(1)
+        log.critical("BOT_TOKEN is not set in .env! Cannot start bot.")
+        raise SystemExit(1)
         
     bot = EventBot()
-    bot.run(TOKEN)
+    try:
+        bot.run(TOKEN)
+    except (KeyboardInterrupt, SystemExit):
+        log.info("Nexus Event Bot terminated cleanly.")
+    except Exception as exc:
+        log.critical("Fatal error during bot execution: %s", exc, exc_info=True)
+        raise SystemExit(1)

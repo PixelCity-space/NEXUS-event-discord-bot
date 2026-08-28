@@ -6,6 +6,7 @@ import discord
 from utils.emojis import WARNING, COUNTDOWN
 from utils.emoji_utils import to_emoji, make_button
 from utils.i18n import t
+from utils.enums import EventStatus
 from utils.calendar_utils import get_google_calendar_url, get_outlook_calendar_url, get_yahoo_calendar_url
 from .participant_formatter import ParticipantFormatter, ParticipantRosterData
 
@@ -40,17 +41,17 @@ def build_card_container(
 
     status_cfg = roster_data.computed_status
     title_prefix = ""
-    if status_cfg == "cancelled":
+    if status_cfg == EventStatus.CANCELLED:
         title_prefix = f"[{t('TAG_CANCELLED', guild_id=guild_id) or 'CANCELLED'}]"
-    elif status_cfg == "postponed":
+    elif status_cfg == EventStatus.POSTPONED:
         title_prefix = f"[{t('TAG_POSTPONED', guild_id=guild_id) or 'POSTPONED'}]"
-    elif status_cfg == "deleted":
+    elif status_cfg == EventStatus.DELETED:
         title_prefix = f"[{t('TAG_DELETED', guild_id=guild_id) or 'DELETED'}]"
-    elif status_cfg == "rescheduled":
+    elif status_cfg == EventStatus.RESCHEDULED:
         title_prefix = f"[{t('TAG_RESCHEDULED', guild_id=guild_id) or 'RESCHEDULED'}]"
-    elif status_cfg == "lobby_expired":
+    elif status_cfg == EventStatus.LOBBY_EXPIRED:
         title_prefix = f"[{t('TAG_LOBBY_EXPIRED', guild_id=guild_id)}]"
-    elif status_cfg == "closed":
+    elif status_cfg == EventStatus.CLOSED:
         title_prefix = f"[{t('TAG_CLOSED', guild_id=guild_id) or 'CLOSED'}]"
 
     title_str = ""
@@ -98,8 +99,6 @@ def build_card_container(
                     time_str += f" - <t:{end_ts}:t>"
                 else:
                     end_label = t("EMBED_END_TIME", guild_id=guild_id)
-                    if end_label == "EMBED_END_TIME":
-                        end_label = "End" if "Time" in t("EMBED_START_TIME", guild_id=guild_id) else "Vége"
                     time_str += f"\n**{end_label}:** <t:{end_ts}:F>"
 
             time_str += f"\n*{t('EMBED_LOBBY_STARTED', guild_id=guild_id)}*"
@@ -118,8 +117,6 @@ def build_card_container(
                 time_str += f" - <t:{end_ts}:t>"
             else:
                 end_label = t("EMBED_END_TIME", guild_id=guild_id)
-                if end_label == "EMBED_END_TIME":
-                    end_label = "End" if "Time" in t("EMBED_START_TIME", guild_id=guild_id) else "Vége"
                 time_str += f"\n**{end_label}:** <t:{end_ts}:F>"
 
         meta_parts.append(f"{COUNTDOWN} <t:{start_ts}:R>")
@@ -142,9 +139,9 @@ def build_card_container(
     # Waiting list
     if roster_data.waiting_list:
         container_items.append(discord.ui.Separator())
-        wait_header = t('EMBED_WAITLIST', guild_id=guild_id) or 'Waiting List'
+        wait_header = t('EMBED_WAITLIST', guild_id=guild_id)
         wait_str = ", ".join(roster_data.waiting_list)
-        container_items.append(discord.ui.TextDisplay(f"**⏳ {wait_header} ({len(roster_data.waiting_list)}):**\n{wait_str}"))
+        container_items.append(discord.ui.TextDisplay(f"**{wait_header} ({len(roster_data.waiting_list)}):**\n{wait_str}"))
 
     # Images / Gallery
     image_url = None
@@ -168,7 +165,7 @@ def build_card_container(
             container_items.append(discord.ui.Thumbnail(media=image_url))
 
     # Footer & Calendar links
-    creator_text = "System"
+    creator_text = t("LBL_SYSTEM", guild_id=guild_id)
     cid = event_conf.get("creator_id")
     if cid and str(cid).isdigit():
         user = bot.get_user(int(cid))
@@ -179,7 +176,7 @@ def build_card_container(
 
     footer_text = t("EMBED_FOOTER", guild_id=guild_id, event_id=event_id, creator_id=creator_text)
 
-    cal_title = event_conf.get("title") or (db_event.get("title") if db_event else "Event")
+    cal_title = event_conf.get("title") or (db_event.get("title") if db_event else t("LBL_EVENT", guild_id=guild_id))
     cal_desc = event_conf.get("description") or (db_event.get("description") if db_event else "")
     cal_start_raw = event_conf.get("start_time") or (db_event.get("start_time") if db_event else None)
     cal_end_ts = event_conf.get("end_time") or (db_event.get("end_time") if db_event else None)
@@ -197,16 +194,14 @@ def build_card_container(
 
     # Accent color
     status_for_color = status_cfg
-    if status_for_color == "cancelled":
+    if status_for_color == EventStatus.CANCELLED:
         accent_hex = "0xE03B42"
-    elif status_for_color == "postponed":
+    elif status_for_color == EventStatus.POSTPONED:
         accent_hex = "0xFEE75C"
-    elif status_for_color in ["deleted", "closed"]:
+    elif status_for_color in (EventStatus.DELETED, EventStatus.CLOSED, EventStatus.LOBBY_EXPIRED):
         accent_hex = "0x95a5a6"
-    elif status_for_color == "rescheduled":
+    elif status_for_color == EventStatus.RESCHEDULED:
         accent_hex = "0x1FAD5E"
-    elif status_for_color == "lobby_expired":
-        accent_hex = "0x95a5a6"
     else:
         accent_hex = str(event_conf.get("color") or "0x40C4FF")
 
@@ -340,10 +335,10 @@ def update_button_states(view, rsvps_list: list, event_conf: dict, active_set: d
         elif isinstance(child, discord.ui.Button):
             all_buttons.append(child)
 
-    if status in ["cancelled", "postponed", "deleted", "lobby_expired", "closed"]:
+    if status in (EventStatus.CANCELLED, EventStatus.POSTPONED, EventStatus.DELETED, EventStatus.LOBBY_EXPIRED, EventStatus.CLOSED):
         for btn in all_buttons:
             allowed_prefix = ("edit_", "delete_", "calendar_", "resched_")
-            if status == "postponed":
+            if status == EventStatus.POSTPONED:
                 allowed_prefix += ("cancel_",)
             if not btn.custom_id.startswith(allowed_prefix):
                 btn.disabled = True

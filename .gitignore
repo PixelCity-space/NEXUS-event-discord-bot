@@ -7,12 +7,13 @@ __pycache__/
 Thumbs.db
 ehthumbs.db
 
-# Environments
+# Environments & Configuration
 .env
 .venv
 env/
 venv/
 ENV/
+config.json
 
 # Database files
 data/*.db

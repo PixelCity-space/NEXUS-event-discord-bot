@@ -7,7 +7,9 @@ import database
 from utils.emojis import PING
 from utils.i18n import t, load_guild_translations
 from utils.logger import log
-from cogs.event_ui import DynamicEventView, get_event_conf
+from utils.enums import EventStatus
+from utils.templates import get_event_conf
+from cogs.event_ui import DynamicEventView
 from services.recurrence_service import evaluate_repost_readiness
 
 async def handle_reposting(bot: discord.Client, db_event: dict[str, Any], now: float) -> None:
@@ -22,9 +24,10 @@ async def handle_reposting(bot: discord.Client, db_event: dict[str, Any], now: f
     is_ready, next_start, terminal_status = evaluate_repost_readiness(db_event, event_conf, now)
 
     if terminal_status:
-        await database.set_event_status(old_event_id, terminal_status)
+        await database.update_event_status(old_event_id, terminal_status)
         log.info(
-            f"[Scheduler] Recurring series for {old_event_id} set to terminal status '{terminal_status}'.",
+            "[Scheduler] Recurring series for %s set to terminal status '%s'.",
+            old_event_id, terminal_status,
             guild_id=db_event.get("guild_id"),
         )
         return
@@ -33,7 +36,7 @@ async def handle_reposting(bot: discord.Client, db_event: dict[str, Any], now: f
         return
 
     # Mark previous event instance as closed
-    await database.set_event_status(old_event_id, "closed")
+    await database.update_event_status(old_event_id, EventStatus.CLOSED)
 
     # Spawn new instance
     new_event_id = str(uuid.uuid4())[:8]
@@ -95,6 +98,6 @@ async def handle_reposting(bot: discord.Client, db_event: dict[str, Any], now: f
                 event_conf["extra_data"] = json.dumps(extra_data)
                 await database.update_active_event(new_event_id, event_conf)
                 
-                log.info(f"[Scheduler] Created thread '{thread_name}' for reposted event {new_event_id}", guild_id=guild_id)
+                log.info("[Scheduler] Created thread '%s' for reposted event %s", thread_name, new_event_id, guild_id=guild_id)
             except Exception as te:
-                log.error(f"[Scheduler] Failed to create thread for reposted event: {te}", guild_id=guild_id)
+                log.error("[Scheduler] Failed to create thread for reposted event: %s", te, guild_id=guild_id)

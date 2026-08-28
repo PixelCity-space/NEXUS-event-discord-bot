@@ -1,11 +1,11 @@
 import asyncio
-from typing import Any, Optional, Union
+from typing import Any, Optional
 import discord
 from discord import app_commands
 import database
 from utils.lobby_utils import positive_status_ids
 from utils.i18n import t
-from cogs.event_ui import get_active_set
+from utils.templates import get_active_set
 
 async def get_eligible_attendance_participants(
     event_id: str,
@@ -43,21 +43,20 @@ def calculate_attendance_stats(participants: list[dict[str, Any]]) -> tuple[int,
 
 async def toggle_user_attendance(
     event_id: str,
-    user_id: Union[str, int],
+    user_id: int,
     current_attendance: str,
 ) -> str:
     """
     Toggles a user's attendance state between 'present' and 'no_show' and updates the database.
     Returns the new attendance status.
     """
-    uid_str = str(user_id)
     new_att = "present" if current_attendance == "no_show" else "no_show"
-    await database.update_rsvp_attendance(event_id, uid_str, new_att)
+    await database.update_rsvp_attendance(event_id, int(user_id), new_att)
     return new_att
 
 async def resolve_member_names_batch(
     bot: discord.Client,
-    guild_id: Optional[Union[int, str]],
+    guild_id: Optional[str],
     user_ids: list[str],
     name_cache: dict[str, str],
 ) -> dict[str, str]:
@@ -82,7 +81,7 @@ async def resolve_member_names_batch(
             mem = guild.get_member(int(uid)) or await guild.fetch_member(int(uid))
             return uid, mem.display_name
         except Exception:
-            return uid, t("LBL_USER_DEFAULT", guild_id=gid_int).replace("{uid}", str(uid))
+            return uid, t("LBL_USER_DEFAULT", guild_id=str(gid_int)).replace("{uid}", str(uid))
 
     results = await asyncio.gather(*(fetch(uid) for uid in missing_ids))
     for uid, name in results:
@@ -91,13 +90,15 @@ async def resolve_member_names_batch(
     return name_cache
 
 async def search_attendance_events_autocomplete(
-    guild_id: Optional[int],
+    guild_id: Optional[str],
     current: str,
 ) -> list[app_commands.Choice[str]]:
     """
     Generates autocomplete suggestions for events eligible for attendance auditing.
     """
-    events = await database.get_attendance_eligible_events(guild_id)
+    if not guild_id:
+        return []
+    events = await database.get_attendance_eligible_events(str(guild_id))
     choices: list[app_commands.Choice[str]] = []
     q = (current or "").lower()
 

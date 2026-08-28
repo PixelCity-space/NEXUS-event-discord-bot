@@ -50,7 +50,7 @@ def create_csv_discord_file(csv_text: str, filename: str) -> discord.File:
     buffer = io.StringIO(csv_text)
     return discord.File(buffer, filename=filename)
 
-def generate_future_events_ics_file(events: list[dict[str, Any]], guild_id: int | str, horizon_seconds: int = 86400) -> Optional[discord.File]:
+def generate_future_events_ics_file(events: list[dict[str, Any]], guild_id: str, horizon_seconds: int = 86400) -> Optional[discord.File]:
     """Filters future events and generates a downloadable .ics calendar file."""
     now = time.time()
     future_events = [e for e in events if (e.get("start_time") or 0) > (now - horizon_seconds)]

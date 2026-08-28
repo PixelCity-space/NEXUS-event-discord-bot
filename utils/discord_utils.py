@@ -75,5 +75,5 @@ async def resolve_user(bot: discord.Client, user_id: Union[str, int, None]) -> O
             return user
         return await bot.fetch_user(uid)
     except Exception as e:
-        log.debug(f"[DiscordUtils] Could not resolve user {user_id}: {e}")
+        log.debug("[DiscordUtils] Could not resolve user %s: %s", user_id, e)
         return None

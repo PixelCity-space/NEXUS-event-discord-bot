@@ -4,6 +4,7 @@ import datetime
 from dateutil.relativedelta import relativedelta, MO, TU, WE, TH, FR, SA, SU
 from dateutil import tz as dttz
 from utils.offset_parse import parse_offset
+from utils.enums import EventStatus
 
 def compute_next_occurrence(
     current_start_ts: float,
@@ -167,7 +168,7 @@ def evaluate_repost_readiness(
             ed = json.loads(extra_data) if isinstance(extra_data, str) else extra_data
             limit_ts = ed.get("recurrence_limit_date") if isinstance(ed, dict) else None
             if limit_ts and next_start > limit_ts:
-                return False, None, "closed"
+                return False, None, EventStatus.CLOSED
         except Exception:
             pass
 
@@ -181,7 +182,7 @@ def should_auto_archive_event(
     """
     Determines if a finished one-time event should be automatically closed/archived.
     """
-    if db_event.get("status") not in ("active", "rescheduled"):
+    if db_event.get("status") not in (EventStatus.ACTIVE, EventStatus.RESCHEDULED):
         return False
 
     rec_type = db_event.get("recurrence_type", "once")
@@ -214,7 +215,7 @@ def is_lobby_expired(
     """
     if not db_event.get("lobby_mode"):
         return False
-    if (db_event.get("status") or "active") != "active":
+    if (db_event.get("status") or EventStatus.ACTIVE) != EventStatus.ACTIVE:
         return False
     if db_event.get("start_time"):
         return False

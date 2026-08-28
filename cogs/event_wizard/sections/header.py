@@ -1,4 +1,3 @@
-import discord
 from discord import ui
 from utils.i18n import t
 

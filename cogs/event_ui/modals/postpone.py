@@ -1,4 +1,3 @@
-import datetime
 import discord
 from dateutil import parser, tz
 import database

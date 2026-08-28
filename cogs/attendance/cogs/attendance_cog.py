@@ -49,7 +49,7 @@ class AttendanceCog(commands.Cog):
             view = AttendanceView(self.bot, event_id, eligible, guild_id, title=db_event.get("title", t("LBL_EVENT", guild_id=guild_id)))
             await view.build()
             
-            log.info(f"[Attendance Debug] COMMAND SUCCESS: Sending View")
+            log.info("[Attendance Debug] COMMAND SUCCESS: Sending View")
             await interaction.followup.send(view=view, ephemeral=True)
             
         except Exception as e:

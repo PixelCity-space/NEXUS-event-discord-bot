@@ -21,14 +21,14 @@ class AttendanceView(ui.LayoutView):
         bot: discord.Client, 
         event_id: str, 
         participants: list[dict[str, Any]], 
-        guild_id: int | str, 
+        guild_id: str, 
         title: str = "Event"
     ):
         super().__init__(timeout=600)
         self.bot = bot
         self.event_id = event_id
         self.participants = participants  # list of dicts {user_id, status, attendance}
-        self.guild_id = guild_id
+        self.guild_id = str(guild_id)
         self.event_title = title
         self.page: int = 0
         self.per_page: int = 5  # Section layout: 5 users fit comfortably

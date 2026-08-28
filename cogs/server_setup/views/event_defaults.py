@@ -53,7 +53,7 @@ class EventDefaultsView(BaseSetupView):
             setting=ServerSettings.AUTO_ARCHIVE_HOURS,
             label=t("LBL_AUTO_ARCHIVE", guild_id=self.guild_id, val=f"{archive_val}h"),
             modal_label=t("LBL_SET_ARCHIVE_TIME", guild_id=self.guild_id),
-            placeholder="12",
+            placeholder=t("PH_DEFAULT_ARCHIVE_HOURS", guild_id=self.guild_id),
         )
 
         back_btn = make_button(label=t("BTN_BACK", guild_id=self.guild_id), style=discord.ButtonStyle.secondary)

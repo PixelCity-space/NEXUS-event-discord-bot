@@ -1,10 +1,12 @@
 """
-Database package for Nexus bot with repository-based architecture and 100% backward compatibility.
+Database package for Nexus bot with repository-based architecture.
 """
 
 from .connection import (
     DEFAULT_TIMEZONE,
     MAX_EVENT_REMINDERS,
+    DatabaseManager,
+    db_manager,
     set_pool,
     get_pool,
     init_db,
@@ -14,6 +16,7 @@ from .repositories.reminders import (
     normalize_reminders_for_store,
     normalize_reminder_message_for_store,
     get_event_reminders,
+    get_all_active_reminders_batch,
     replace_event_reminders,
     mark_reminder_slot_sent,
     mark_all_reminder_slots_sent,
@@ -22,16 +25,15 @@ from .repositories.reminders import (
 
 from .repositories.events import (
     normalize_rsvp_allowed_role_ids_value,
+    normalize_image_urls_for_store,
     check_config_exists,
     create_active_event,
     get_active_events,
-    get_all_active_events,
     get_active_events_by_config,
     get_active_event,
     update_active_event,
     update_event_status,
     update_event_status_bulk,
-    set_event_status,
     update_event_time,
     set_lobby_start_time,
     update_active_events_metadata_bulk,
@@ -45,10 +47,10 @@ from .repositories.events import (
 
 from .repositories.rsvps import (
     get_rsvps,
-    get_event_rsvps,
     update_rsvp,
     get_rsvps_with_time,
     promote_next_waiting,
+    promote_waiting_users_atomic,
     get_attendance_eligible_events,
     get_event_attendance_data,
     update_rsvp_attendance,
@@ -93,6 +95,8 @@ __all__ = [
     # Connection
     "DEFAULT_TIMEZONE",
     "MAX_EVENT_REMINDERS",
+    "DatabaseManager",
+    "db_manager",
     "set_pool",
     "get_pool",
     "init_db",
@@ -100,8 +104,10 @@ __all__ = [
     "normalize_reminders_for_store",
     "normalize_reminder_message_for_store",
     "normalize_rsvp_allowed_role_ids_value",
+    "normalize_image_urls_for_store",
     # Reminders
     "get_event_reminders",
+    "get_all_active_reminders_batch",
     "replace_event_reminders",
     "mark_reminder_slot_sent",
     "mark_all_reminder_slots_sent",
@@ -110,13 +116,11 @@ __all__ = [
     "check_config_exists",
     "create_active_event",
     "get_active_events",
-    "get_all_active_events",
     "get_active_events_by_config",
     "get_active_event",
     "update_active_event",
     "update_event_status",
     "update_event_status_bulk",
-    "set_event_status",
     "update_event_time",
     "set_lobby_start_time",
     "update_active_events_metadata_bulk",
@@ -128,10 +132,10 @@ __all__ = [
     "get_guild_events_export",
     # RSVPs
     "get_rsvps",
-    "get_event_rsvps",
     "update_rsvp",
     "get_rsvps_with_time",
     "promote_next_waiting",
+    "promote_waiting_users_atomic",
     "get_attendance_eligible_events",
     "get_event_attendance_data",
     "update_rsvp_attendance",

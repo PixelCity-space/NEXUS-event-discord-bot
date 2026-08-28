@@ -1,3 +1,4 @@
+from typing import Optional, Any
 import json
 import os
 import re
@@ -35,12 +36,14 @@ if os.path.exists(LOCALES_DIR):
 
 GUILD_CACHE = {} # {guild_id: {"overrides": {...}, "lang": "hu"}}
 
-async def load_guild_translations(guild_id):
+async def load_guild_translations(guild_id: Optional[Any]) -> dict[str, Any]:
     """Fetch overrides and settings from DB and cache them."""
+    if not guild_id:
+        return {"overrides": {}, "settings": {}, "lang": DEFAULT_LANG}
     gid_str = str(guild_id)
     
-    overrides = await database.get_guild_translations(guild_id)
-    settings = await database.get_all_guild_settings(guild_id)
+    overrides = await database.get_guild_translations(gid_str)
+    settings = await database.get_all_guild_settings(gid_str)
     guild_lang = settings.get("language", DEFAULT_LANG)
     
     GUILD_CACHE[gid_str] = {
@@ -50,7 +53,7 @@ async def load_guild_translations(guild_id):
     }
     return GUILD_CACHE[gid_str]
 
-def t(translation_key: str, guild_id=None, use_template_lang=False, **kwargs):
+def t(translation_key: Optional[str], guild_id: Optional[Any] = None, use_template_lang: bool = False, **kwargs) -> str:
     """
     Translates a key with multi-layer priority:
     1. Guild-specific override (DB)

@@ -1,7 +1,6 @@
 import json
 import discord
 from discord import ui
-import database
 from utils.i18n import t
 from utils.emoji_utils import make_select_option, make_button
 from ..modals import (

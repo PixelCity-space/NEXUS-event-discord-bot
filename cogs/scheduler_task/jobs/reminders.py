@@ -1,12 +1,17 @@
-from typing import Any
+from typing import Any, Optional
 import discord
 import database
 from utils.offset_parse import parse_offset
 from utils.i18n import t
-from cogs.event_ui import get_active_set
+from utils.templates import get_active_set
 from services.notification_service import resolve_target_recipients, send_event_alert
 
-async def handle_reminders(bot: discord.Client, db_event: dict[str, Any], now: float) -> None:
+async def handle_reminders(
+    bot: discord.Client,
+    db_event: dict[str, Any],
+    now: float,
+    preloaded_reminders: Optional[list[dict[str, Any]]] = None,
+) -> None:
     """Processes scheduled multi-slot reminders for active events."""
     if db_event.get("lobby_mode"):
         return
@@ -17,7 +22,10 @@ async def handle_reminders(bot: discord.Client, db_event: dict[str, Any], now: f
     if start_ts is None:
         return
 
-    rows = list(await database.get_event_reminders(event_id))
+    if preloaded_reminders is not None:
+        rows = preloaded_reminders
+    else:
+        rows = list(await database.get_event_reminders(event_id))
     legacy_only = False
     if not rows and db_event.get("reminder_offset"):
         if int(db_event.get("reminder_sent") or 0) == 1:
@@ -39,7 +47,7 @@ async def handle_reminders(bot: discord.Client, db_event: dict[str, Any], now: f
 
     due.sort(key=lambda x: int(x["slot_idx"]))
 
-    rsvps = await database.get_event_rsvps(event_id)
+    rsvps = await database.get_rsvps(event_id)
     if not rsvps:
         if legacy_only:
             await database.mark_reminder_sent(event_id)

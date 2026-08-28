@@ -1,7 +1,6 @@
 from typing import Optional, Any
 import re
 import json
-import random
 import time
 from ..connection import get_pool, DEFAULT_TIMEZONE
 from .reminders import (
@@ -29,7 +28,17 @@ def normalize_rsvp_allowed_role_ids_value(raw: Any) -> str:
             out.append(digits)
     return ",".join(out)
 
-async def check_config_exists(guild_id: int | str, config_name: str) -> bool:
+def normalize_image_urls_for_store(raw_images: Any) -> Optional[str]:
+    """Normalizes image URL input (str or list of str) into a comma-separated string for DB storage."""
+    if not raw_images:
+        return None
+    if isinstance(raw_images, list):
+        cleaned = [str(u).strip() for u in raw_images if str(u).strip()]
+        return ",".join(cleaned) if cleaned else None
+    s = str(raw_images).strip()
+    return s if s else None
+
+async def check_config_exists(guild_id: str, config_name: str) -> bool:
     """Returns True if a config_name already exists in active_events for this guild."""
     pool = await get_pool()
     row = await pool.fetchrow(
@@ -39,7 +48,7 @@ async def check_config_exists(guild_id: int | str, config_name: str) -> bool:
     return row is not None
 
 async def create_active_event(
-    guild_id: int | str, 
+    guild_id: str, 
     event_id: str, 
     config_name: str, 
     channel_id: int | str, 
@@ -52,12 +61,7 @@ async def create_active_event(
     
     title = data.get("title")
     description = data.get("description")
-    
-    raw_images = data.get("image_urls")
-    if isinstance(raw_images, list) and raw_images:
-        image_urls = random.choice(raw_images)
-    else:
-        image_urls = str(raw_images) if raw_images else None
+    image_urls = normalize_image_urls_for_store(data.get("image_urls"))
 
     color = str(data.get("color") or "0x40C4FF")
     max_acc = int(data.get("max_accepted") or 0)
@@ -119,7 +123,7 @@ async def create_active_event(
     await replace_event_reminders(event_id, normalize_reminders_for_store(data))
     return event_id
 
-async def get_active_events(guild_id: Optional[int | str] = None, include_all: bool = False) -> list[Any]:
+async def get_active_events(guild_id: Optional[str] = None, include_all: bool = False) -> list[Any]:
     """Fetches active events, optionally filtered by guild_id and active status."""
     pool = await get_pool()
     if guild_id:
@@ -131,16 +135,12 @@ async def get_active_events(guild_id: Optional[int | str] = None, include_all: b
         return await pool.fetch("SELECT * FROM active_events")
     return await pool.fetch("SELECT * FROM active_events WHERE status IN ('active', 'rescheduled')")
 
-async def get_all_active_events(guild_id: Optional[int | str] = None) -> list[Any]:
-    """Alias for get_active_events() used during bot startup and autocomplete."""
-    return await get_active_events(guild_id)
-
-async def get_active_events_by_config(config_name: str, guild_id: int | str) -> list[Any]:
+async def get_active_events_by_config(config_name: str, guild_id: str) -> list[Any]:
     """Fetch all active events belonging to a specific series/configuration."""
     pool = await get_pool()
     return await pool.fetch("SELECT * FROM active_events WHERE config_name = $1 AND guild_id = $2", config_name, str(guild_id))
 
-async def get_active_event(event_id: str, guild_id: Optional[int | str] = None) -> Optional[dict[str, Any]]:
+async def get_active_event(event_id: str, guild_id: Optional[str] = None) -> Optional[dict[str, Any]]:
     """Fetch a single event by event_id."""
     pool = await get_pool()
     if guild_id:
@@ -153,12 +153,7 @@ async def update_active_event(event_id: str, data: dict[str, Any]) -> None:
     """Updates active event record fields and refreshes reminder slots."""
     title = data.get("title")
     description = data.get("description")
-    
-    raw_images = data.get("image_urls")
-    if isinstance(raw_images, list):
-        image_urls = ",".join(str(u) for u in raw_images)
-    else:
-        image_urls = str(raw_images) if raw_images else None
+    image_urls = normalize_image_urls_for_store(data.get("image_urls"))
 
     color = str(data.get("color") or "0x40C4FF")
     max_acc = int(data.get("max_accepted") or 0)
@@ -296,10 +291,6 @@ async def update_event_status_bulk(event_ids: list[str], status: str) -> None:
     pool = await get_pool()
     await pool.execute("UPDATE active_events SET status = $1 WHERE event_id = ANY($2)", status, event_ids)
 
-async def set_event_status(event_id: str, status: str) -> None:
-    """Alias for update_event_status."""
-    await update_event_status(event_id, status)
-
 async def update_event_time(event_id: str, start_time: float | int) -> None:
     """Set a new start time for an event (postpone). Resets reminders."""
     pool = await get_pool()
@@ -331,6 +322,7 @@ async def update_active_events_metadata_bulk(event_ids: list[str], data: dict[st
     pool = await get_pool()
     extra_json = json.dumps(data.get("extra_data") or {}) if isinstance(data.get("extra_data"), dict) else data.get("extra_data")
     rsvp_allowed_role_ids = normalize_rsvp_allowed_role_ids_value(data.get("rsvp_allowed_role_ids"))
+    image_urls = normalize_image_urls_for_store(data.get("image_urls"))
 
     await pool.execute("""
         UPDATE active_events SET 
@@ -339,14 +331,14 @@ async def update_active_events_metadata_bulk(event_ids: list[str], data: dict[st
             temp_role_id = $8, use_temp_role = $9, rsvp_allowed_role_ids = $10
         WHERE event_id = ANY($11)
     """, 
-        data.get("title"), data.get("description"), data.get("image_urls"),
+        data.get("title"), data.get("description"), image_urls,
         data.get("color"), data.get("max_accepted"), data.get("icon_set"), 
         extra_json, data.get("temp_role_id"), data.get("use_temp_role", False),
         rsvp_allowed_role_ids,
         event_ids
     )
 
-async def set_event_message(event_id: str, message_id: int, guild_id: Optional[int | str] = None) -> None:
+async def set_event_message(event_id: str, message_id: int, guild_id: Optional[str] = None) -> None:
     """Stores the Discord message ID for an active event."""
     pool = await get_pool()
     if guild_id:
@@ -354,17 +346,19 @@ async def set_event_message(event_id: str, message_id: int, guild_id: Optional[i
     else:
         await pool.execute("UPDATE active_events SET message_id = $1 WHERE event_id = $2", message_id, event_id)
 
-async def delete_active_event(event_id: str, guild_id: Optional[int | str] = None) -> None:
-    """Deletes an active event and all associated reminders and RSVPs."""
+async def delete_active_event(event_id: str, guild_id: Optional[str] = None) -> None:
+    """Deletes an active event and all associated reminders and RSVPs atomically."""
     pool = await get_pool()
-    await pool.execute("DELETE FROM event_reminders WHERE event_id = $1", event_id)
-    await pool.execute("DELETE FROM rsvps WHERE event_id = $1", event_id)
-    if guild_id:
-        await pool.execute("DELETE FROM active_events WHERE event_id = $1 AND guild_id = $2", event_id, str(guild_id))
-    else:
-        await pool.execute("DELETE FROM active_events WHERE event_id = $1", event_id)
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute("DELETE FROM event_reminders WHERE event_id = $1", event_id)
+            await conn.execute("DELETE FROM rsvps WHERE event_id = $1", event_id)
+            if guild_id:
+                await conn.execute("DELETE FROM active_events WHERE event_id = $1 AND guild_id = $2", event_id, str(guild_id))
+            else:
+                await conn.execute("DELETE FROM active_events WHERE event_id = $1", event_id)
 
-async def get_endable_events(guild_id: int | str) -> list[Any]:
+async def get_endable_events(guild_id: str) -> list[Any]:
     """Fetches active events that have already started (for autocomplete)."""
     pool = await get_pool()
     now = time.time()
@@ -377,7 +371,7 @@ async def get_endable_events(guild_id: int | str) -> list[Any]:
         LIMIT 25
     """, str(guild_id), now)
 
-async def get_user_active_events(guild_id: int | str, user_id: int | str) -> list[Any]:
+async def get_user_active_events(guild_id: str, user_id: int | str) -> list[Any]:
     """Fetches upcoming events where the user is either the organizer or a participant."""
     pool = await get_pool()
     now = time.time()
@@ -393,7 +387,7 @@ async def get_user_active_events(guild_id: int | str, user_id: int | str) -> lis
         ORDER BY e.start_time ASC NULLS LAST
     """, str(guild_id), int(user_id), now - 86400)
 
-async def get_user_event_history(guild_id: int | str, user_id: int | str, limit: int = 20) -> list[Any]:
+async def get_user_event_history(guild_id: str, user_id: int | str, limit: int = 20) -> list[Any]:
     """Fetches past events where the user was the organizer or a participant."""
     pool = await get_pool()
     return await pool.fetch("""
@@ -408,7 +402,7 @@ async def get_user_event_history(guild_id: int | str, user_id: int | str, limit:
         LIMIT $3
     """, str(guild_id), int(user_id), limit)
 
-async def get_guild_events_export(guild_id: int | str) -> list[Any]:
+async def get_guild_events_export(guild_id: str) -> list[Any]:
     """Fetches all events for a guild with aggregated stats for CSV export."""
     pool = await get_pool()
     return await pool.fetch("""

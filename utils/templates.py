@@ -1,3 +1,8 @@
+from typing import Optional, Any, Dict
+import json
+import database
+from utils.config import config
+from utils.logger import log
 from utils.emoji_utils import parse_emoji_config
 
 # Canonical Template IDs and their human-readable strings (6-column format)
@@ -37,7 +42,10 @@ ICON_SET_TEMPLATES = {
     }
 }
 
-def get_template_data(template_id: str):
+# In-memory cache for custom icon sets loaded from database
+CUSTOM_ICON_SETS: Dict[str, Any] = {}
+
+def get_template_data(template_id: str) -> Optional[dict]:
     """Returns the parsed JSON-ready dict for a given template."""
     tmpl = ICON_SET_TEMPLATES.get(template_id)
     if not tmpl:
@@ -61,8 +69,10 @@ def get_template_data(template_id: str):
     for o in opts:
         km = KEY_MAP.get(o["id"])
         if km:
-            if "label_key" in km: o["label_key"] = km["label_key"]
-            if "list_label_key" in km: o["list_label_key"] = km["list_label_key"]
+            if "label_key" in km:
+                o["label_key"] = km["label_key"]
+            if "list_label_key" in km:
+                o["list_label_key"] = km["list_label_key"]
 
     return {
         "options": opts,
@@ -70,3 +80,53 @@ def get_template_data(template_id: str):
         "buttons_per_row": tmpl.get("buttons_per_row", 5),
         "show_mgmt": tmpl.get("show_mgmt", True)
     }
+
+def get_event_conf(name: str) -> Optional[dict]:
+    """Retrieves merged configuration settings for a given event name or config_name."""
+    try:
+        events = config.get("events_config", [])
+        defaults = config.get("globals", {}).get("event_defaults", {})
+        
+        for e in events:
+            if e.get("config_name") == name or e.get("name") == name:
+                merged = defaults.copy()
+                merged.update(e)
+                return merged
+    except Exception as e:
+        log.error("Error loading event config: %s", e)
+    return None
+
+async def load_custom_sets() -> None:
+    """Fetch custom emoji sets from database (Global and Guild-specific)."""
+    global CUSTOM_ICON_SETS
+    try:
+        # 1. Global sets
+        global_sets = await database.get_all_global_emoji_sets()
+        for s in global_sets:
+            data = s["data"]
+            if isinstance(data, str):
+                data = json.loads(data)
+            CUSTOM_ICON_SETS[s["set_id"]] = data
+        
+        # 2. Guild-specific sets (overwrites global if IDs match)
+        db_sets = await database.get_all_custom_emoji_sets()
+        for s in db_sets:
+            data = s["data"]
+            if isinstance(data, str):
+                data = json.loads(data)
+            CUSTOM_ICON_SETS[s["set_id"]] = data
+            
+        log.info("Loaded %d emoji sets from database.", len(CUSTOM_ICON_SETS))
+    except Exception as e:
+        log.error("Failed to load custom emoji sets: %s", e)
+
+def get_active_set(key: str) -> dict:
+    """Return the icon set config for a given key, checking templates first then DB cache."""
+    tmpl_data = get_template_data(key)
+    if tmpl_data:
+        return tmpl_data
+    
+    if key in CUSTOM_ICON_SETS:
+        return CUSTOM_ICON_SETS[key]
+    
+    return {"options": []}

@@ -98,7 +98,7 @@ class EmojiWizardView(ui.LayoutView):
                 
                 view = TemplateChoiceView(new_view)
                 await it.response.send_message(view=view, ephemeral=True)
-                log.info(f"[EmojiWizard] TemplateChoiceView sent for new set creation.")
+                log.info("[EmojiWizard] TemplateChoiceView sent for new set creation.")
             except Exception as e:
                 log.error(f"[EmojiWizard] CRITICAL ERROR in add_cb: {e}", exc_info=True)
                 if not it.response.is_done():

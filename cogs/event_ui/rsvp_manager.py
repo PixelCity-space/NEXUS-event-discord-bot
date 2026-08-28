@@ -5,6 +5,7 @@ import discord
 import database
 from utils.i18n import t
 from utils.logger import log
+from utils.enums import EventStatus
 from utils.emoji_utils import resolve_placeholders
 from .notifications import notify_promotion
 from .lobby import process_lobby_transition
@@ -15,55 +16,41 @@ _rsvp_cooldowns: dict[tuple, float] = {}
 RSVP_COOLDOWN_SECONDS = 60
 
 async def try_promote_waiting(bot, event_id: str, event_conf: dict, active_set: dict, interaction: discord.Interaction, db_event: dict, role_limits: dict, rsvps=None):
-    """Attempts to promote the earliest waiting user across all eligible roles."""
-    if rsvps is None:
-        rsvps_raw = await database.get_rsvps_with_time(event_id)
-        rsvps = [dict(r) for r in rsvps_raw]
-    
+    """Attempts to promote the earliest waiting user across all eligible roles atomically."""
     positive_statuses = [o["id"] for o in active_set["options"] if o.get("positive")]
     if not positive_statuses and "positive_count" in active_set:
         cnt = active_set["positive_count"]
         positive_statuses = [o["id"] for o in active_set["options"][:cnt]]
-        
-    max_acc = event_conf.get('max_accepted', 0)
-    
-    # Sort by joined_at to ensure FIFO fairness (earliest first)
-    waiting = sorted([r for r in rsvps if str(r["status"]).startswith("wait_")], key=lambda x: x["joined_at"])
-    if not waiting:
-        return
 
-    for w in waiting:
-        current_acc = sum(1 for r in rsvps if r["status"] in positive_statuses)
-        if max_acc > 0 and current_acc >= max_acc:
-            break
-            
-        wait_status = str(w["status"])
-        target_status = wait_status.replace("wait_", "")
-        
-        # Check role-specific limit
-        role_limit = role_limits.get(target_status)
-        if role_limit is None:
-            opt = next((o for o in active_set.get("options", []) if o["id"] == target_status), None)
-            if opt:
-                role_limit = opt.get("max_slots")
-        
-        if role_limit and sum(1 for r in rsvps if r["status"] == target_status) >= role_limit:
-            continue
-            
-        # Promotion found
-        user_id = w["user_id"]
-        await database.update_rsvp(event_id, user_id, target_status)
-        
+    max_acc = int(event_conf.get("max_accepted", 0) or 0)
+
+    # Merge active_set option limits with role_limits
+    merged_limits = dict(role_limits or {})
+    for opt in active_set.get("options", []):
+        oid = opt.get("id")
+        if oid and oid not in merged_limits and opt.get("max_slots"):
+            merged_limits[oid] = opt["max_slots"]
+
+    # Execute atomic row-level locked promotion
+    promoted_users = await database.promote_waiting_users_atomic(
+        event_id=event_id,
+        positive_statuses=positive_statuses,
+        max_accepted=max_acc,
+        role_limits=merged_limits,
+    )
+
+    for user_id, target_status in promoted_users:
         opt = next((o for o in active_set["options"] if o["id"] == target_status), None)
         if opt:
             await notify_promotion(bot, interaction, event_id, event_conf, user_id, opt)
-            
+
         log.info(f"[Promotion] User {user_id} promoted to {target_status} for event {event_id}")
-        
-        for r in rsvps:
-            if r["user_id"] == user_id:
-                r["status"] = target_status
-                break
+
+        if rsvps is not None:
+            for r in rsvps:
+                if r["user_id"] == user_id:
+                    r["status"] = target_status
+                    break
 
 async def handle_rsvp(view, interaction: discord.Interaction, status: str):
     """Processes user RSVP click, enforcing limits, roles, waitlist queues, and temp roles."""
@@ -90,13 +77,14 @@ async def handle_rsvp(view, interaction: discord.Interaction, status: str):
         _rsvp_cooldowns[cd_key] = time.time()
 
     gid_chk = interaction.guild_id or db_event.get("guild_id")
-    if db_event.get("status") == "lobby_expired":
+    ev_status = db_event.get("status")
+    if ev_status == EventStatus.LOBBY_EXPIRED:
         return await interaction.response.send_message(
             t("ERR_LOBBY_EXPIRED", guild_id=gid_chk), ephemeral=True
         )
     if (
         db_event.get("lobby_mode")
-        and db_event.get("status") == "active"
+        and ev_status == EventStatus.ACTIVE
         and db_event.get("start_time") is None
     ):
         exp = db_event.get("lobby_expires_at")
@@ -104,7 +92,7 @@ async def handle_rsvp(view, interaction: discord.Interaction, status: str):
             return await interaction.response.send_message(
                 t("ERR_LOBBY_EXPIRED", guild_id=gid_chk), ephemeral=True
             )
-    if db_event["status"] not in ["active", "rescheduled"]:
+    if ev_status not in (EventStatus.ACTIVE, EventStatus.RESCHEDULED):
         return await interaction.response.send_message(t("ERR_EV_INACTIVE"), ephemeral=True)
 
     raw_allowed = db_event.get("rsvp_allowed_role_ids")
@@ -241,8 +229,7 @@ async def handle_rsvp(view, interaction: discord.Interaction, status: str):
     
     # Fresh view recreation pattern
     try:
-        from .views.dynamic_card import DynamicEventView
-        new_view = DynamicEventView(bot, event_id, view.event_conf)
+        new_view = view.__class__(bot, event_id, view.event_conf)
         await new_view.prepare()
 
         if not interaction.response.is_done():

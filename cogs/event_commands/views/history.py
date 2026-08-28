@@ -31,7 +31,6 @@ class EventHistoryView(ui.LayoutView):
         for i, ev in enumerate(event_slice):
             title = ev["title"] or t("LBL_UNNAMED_EVENT", guild_id=self.guild_id)
             st = ev["start_time"]
-            eid = ev["event_id"]
             cid = ev["channel_id"]
             mid = ev["message_id"]
             creator_id = ev["creator_id"]

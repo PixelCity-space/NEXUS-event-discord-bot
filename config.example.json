@@ -1,0 +1,41 @@
+{
+  // ==========================================
+  // Nexus Event Bot - Configuration Template
+  // ==========================================
+  // Rename or copy this file to 'config.json'
+
+  // List of Discord Guild (Server) IDs with access to /master administrative commands.
+  // Can also be configured via MASTER_GUILD_IDS environment variable.
+  "master_guild_ids": [
+    // 123456789012345678
+  ],
+
+  // List of Discord Guild (Server) IDs with premium feature access.
+  // Can also be configured via PREMIUM_GUILD_IDS environment variable.
+  "premium_guild_ids": [
+    // 123456789012345678
+  ],
+
+  // Default bot interface language ("en" = English, "hu" = Hungarian).
+  // Can also be configured via BOT_LANGUAGE environment variable.
+  "language": "en",
+
+  // Legacy command prefix for text-based fallback commands (e.g. "!help").
+  // Can also be configured via COMMAND_PREFIX environment variable.
+  "command_prefix": "!",
+
+  // Optional suffix appended to slash command names (leave empty "" for standard names).
+  "command_suffix": "",
+
+  // Global bot runtime parameters
+  "globals": {
+    // Console and file logging verbosity: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
+    "logging_level": "INFO",
+
+    // Interactive event creation wizard timeout in seconds (default: 600s / 10 minutes)
+    "wizard_timeout": 600,
+
+    // Bot release version string
+    "version": "v2.2.0"
+  }
+}

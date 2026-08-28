@@ -140,7 +140,7 @@ async def send_event_alert(
                 await channel.send(content=full_content, embed=embed)
                 stats["channel_sent"] = 1
         except Exception as e:
-            log.warning(f"[NotificationService] Failed to send channel alert to {channel_id}: {e}")
+            log.warning("[NotificationService] Failed to send channel alert to %s: %s", channel_id, e)
 
     # 2. Send DM notifications
     if send_dm and target_user_ids:
@@ -160,6 +160,6 @@ async def send_event_alert(
                         await asyncio.sleep(0.05)
             except Exception as e:
                 stats["dms_failed"] += 1
-                log.debug(f"[NotificationService] Could not send DM to {uid}: {e}")
+                log.debug("[NotificationService] Could not send DM to %s: %s", uid, e)
 
     return stats

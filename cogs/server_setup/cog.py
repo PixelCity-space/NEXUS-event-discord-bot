@@ -18,7 +18,7 @@ class ServerSetupCog(commands.Cog, name="ServerSetup"):
         await interaction.response.defer(ephemeral=True)
         guild_id = interaction.guild_id
         if not guild_id:
-            return await interaction.followup.send("This command can only be used within a server.", ephemeral=True)
+            return await interaction.followup.send(t("ERR_GUILD_ONLY"), ephemeral=True)
 
         try:
             await load_guild_translations(guild_id)

@@ -7,11 +7,11 @@ from utils.i18n import t, load_guild_translations
 class MessageEditModal(ui.Modal):
     """Modal to edit custom translation overrides for a specific language key."""
     
-    def __init__(self, wizard_view: Any, key: str, current_val: str, guild_id: int | str):
+    def __init__(self, wizard_view: Any, key: str, current_val: str, guild_id: str):
         super().__init__(title=t("MODAL_MESSAGE_EDIT", guild_id=guild_id))
         self.wizard_view = wizard_view
         self.key = key
-        self.guild_id = guild_id
+        self.guild_id = str(guild_id)
         
         self.text_input = ui.TextInput(
             label=f"{t('LBL_CUSTOM_TEXT', guild_id=guild_id)}: {key}"[:45],

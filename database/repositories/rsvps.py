@@ -7,10 +7,6 @@ async def get_rsvps(event_id: str) -> list[Any]:
     pool = await get_pool()
     return await pool.fetch("SELECT user_id, status FROM rsvps WHERE event_id = $1", event_id)
 
-async def get_event_rsvps(event_id: str) -> list[Any]:
-    """Alias for get_rsvps used by scheduler."""
-    return await get_rsvps(event_id)
-
 async def update_rsvp(event_id: str, user_id: int, status: str) -> None:
     """Inserts or updates an RSVP status for a user, updating joined_at if the status changes."""
     now = time.time()
@@ -49,7 +45,70 @@ async def promote_next_waiting(event_id: str, waiting_status: str, target_status
         return user_id
     return None
 
-async def get_attendance_eligible_events(guild_id: int | str) -> list[Any]:
+async def promote_waiting_users_atomic(
+    event_id: str,
+    positive_statuses: list[str],
+    max_accepted: int = 0,
+    role_limits: Optional[dict[str, int]] = None,
+) -> list[tuple[int, str]]:
+    """
+    Atomically evaluates and promotes eligible waiting list users under a PostgreSQL row-level lock.
+    Guarantees no race condition or duplicate promotion occurs when slots are vacated concurrently.
+    Returns: list of (promoted_user_id, target_status) tuples.
+    """
+    pool = await get_pool()
+    role_limits = role_limits or {}
+    promoted: list[tuple[int, str]] = []
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # 1. Lock the active event row for exclusive evaluation during promotion
+            await conn.execute(
+                "SELECT event_id FROM active_events WHERE event_id = $1 FOR UPDATE",
+                event_id,
+            )
+
+            # 2. Fetch fresh RSVPs within the locked transaction in FIFO order
+            rows = await conn.fetch(
+                "SELECT user_id, status, joined_at FROM rsvps WHERE event_id = $1 ORDER BY joined_at ASC FOR UPDATE",
+                event_id,
+            )
+            rsvps = [dict(r) for r in rows]
+
+            waiting = [r for r in rsvps if str(r["status"]).startswith("wait_")]
+            if not waiting:
+                return []
+
+            for w in waiting:
+                current_acc = sum(1 for r in rsvps if r["status"] in positive_statuses)
+                if max_accepted > 0 and current_acc >= max_accepted:
+                    break
+
+                wait_status = str(w["status"])
+                target_status = wait_status.replace("wait_", "")
+
+                role_limit = role_limits.get(target_status)
+                if role_limit and sum(1 for r in rsvps if r["status"] == target_status) >= role_limit:
+                    continue
+
+                user_id = int(w["user_id"])
+                await conn.execute(
+                    "UPDATE rsvps SET status = $1 WHERE event_id = $2 AND user_id = $3",
+                    target_status,
+                    event_id,
+                    user_id,
+                )
+
+                for r in rsvps:
+                    if r["user_id"] == user_id:
+                        r["status"] = target_status
+                        break
+
+                promoted.append((user_id, target_status))
+
+    return promoted
+
+async def get_attendance_eligible_events(guild_id: str) -> list[Any]:
     """Fetches events from the last 7 days that have started."""
     pool = await get_pool()
     now = time.time()
@@ -71,7 +130,7 @@ async def get_event_attendance_data(event_id: str) -> list[Any]:
         ORDER BY status, user_id
     """, event_id)
 
-async def update_rsvp_attendance(event_id: str, user_id: int | str, status: str) -> None:
+async def update_rsvp_attendance(event_id: str, user_id: int, status: str) -> None:
     """Updates the attendance column (present / no_show)."""
     pool = await get_pool()
     await pool.execute("""
@@ -80,7 +139,7 @@ async def update_rsvp_attendance(event_id: str, user_id: int | str, status: str)
         WHERE event_id = $2 AND user_id = $3
     """, status, event_id, int(user_id))
 
-async def get_guild_reliability_stats(guild_id: int | str, all_time: bool = False) -> list[Any]:
+async def get_guild_reliability_stats(guild_id: str, all_time: bool = False) -> list[Any]:
     """Fetches user reliability and no-show stats for a guild."""
     pool = await get_pool()
     now = time.time()
@@ -106,7 +165,7 @@ async def get_guild_reliability_stats(guild_id: int | str, all_time: bool = Fals
     """
     return await pool.fetch(query, *params)
 
-async def get_event_reliability_audit(event_id: str, guild_id: int | str) -> list[Any]:
+async def get_event_reliability_audit(event_id: str, guild_id: str) -> list[Any]:
     """Fetches reliability stats for all participants of a specific event."""
     pool = await get_pool()
     now = time.time()
@@ -125,7 +184,7 @@ async def get_event_reliability_audit(event_id: str, guild_id: int | str) -> lis
         ORDER BY noshow_count DESC
     """, event_id, str(guild_id), now)
 
-async def get_guild_rsvps_export(guild_id: int | str) -> list[Any]:
+async def get_guild_rsvps_export(guild_id: str) -> list[Any]:
     """Fetches all RSVP records for a guild joined with event titles."""
     pool = await get_pool()
     return await pool.fetch("""
