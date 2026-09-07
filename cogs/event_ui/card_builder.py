@@ -8,6 +8,7 @@ from utils.emoji_utils import to_emoji, make_button
 from utils.i18n import t
 from utils.enums import EventStatus
 from utils.calendar_utils import get_google_calendar_url, get_outlook_calendar_url, get_yahoo_calendar_url
+from utils.extra_data import parse_extra_data
 from .participant_formatter import ParticipantFormatter, ParticipantRosterData
 
 def build_card_container(
@@ -145,17 +146,32 @@ def build_card_container(
 
     # Images / Gallery
     image_url = None
-    db_urls = db_event.get("image_urls") if db_event else None
-    conf_urls = event_conf.get("image_urls")
-    target_urls = db_urls or conf_urls
-    if target_urls:
-        if isinstance(target_urls, list):
-            image_url = random.choice(target_urls)
-        elif isinstance(target_urls, str):
-            if "," in target_urls:
-                image_url = random.choice([u.strip() for u in target_urls.split(",")])
-            else:
-                image_url = target_urls.strip()
+    extra_dto = parse_extra_data(db_event.get("extra_data")) if db_event else None
+    if extra_dto and extra_dto.selected_image_url:
+        image_url = extra_dto.selected_image_url
+    elif event_conf.get("selected_image_url"):
+        image_url = event_conf.get("selected_image_url")
+    else:
+        db_urls = db_event.get("image_urls") if db_event else None
+        conf_urls = event_conf.get("image_urls")
+        target_urls = db_urls or conf_urls
+        if target_urls:
+            url_list = (
+                [u.strip() for u in target_urls.split(",") if u.strip()]
+                if isinstance(target_urls, str)
+                else [u.strip() for u in target_urls if u and isinstance(u, str)]
+            )
+            if len(url_list) == 1:
+                image_url = url_list[0]
+            elif url_list:
+                # Deterministic selection based on event_id:
+                # Persists the chosen image across all button clicks/RSVP actions for this event instance,
+                # while rotating randomly when a new recurring event instance is spawned with a new UUID.
+                seed = event_id or (db_event.get("event_id") if db_event else None)
+                if seed:
+                    image_url = random.Random(str(seed)).choice(url_list)
+                else:
+                    image_url = random.choice(url_list)
 
     if image_url:
         try:

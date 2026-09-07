@@ -253,3 +253,43 @@ def test_update_button_states_max_accepted_reached(base_active_set):
     update_button_states(mock_view, rsvps, event_conf, base_active_set)
     assert btn_tank.disabled is True
     assert btn_dps.disabled is True
+
+
+def test_card_builder_image_persistence_per_event(base_active_set):
+    """Verifies that an event card keeps the same image across user actions, but can vary by event_id."""
+    mock_bot = MagicMock()
+    images = "https://example.com/imgA.png, https://example.com/imgB.png, https://example.com/imgC.png"
+    event_conf = {"title": "Battle Cup", "image_urls": images, "guild_id": 12345}
+    db_event = {"event_id": "22a39d82", "title": "Battle Cup", "image_urls": images}
+
+    # Render card for event 22a39d82 multiple times (simulating button clicks / RSVP refreshes)
+    container1 = build_card_container(mock_bot, "22a39d82", event_conf, db_event, base_active_set, [])
+    container2 = build_card_container(mock_bot, "22a39d82", event_conf, db_event, base_active_set, [{"user_id": 1, "status": "tank"}])
+
+    # Extract image items from container
+    def get_image_url(container):
+        for item in container.children:
+            if isinstance(item, discord.ui.MediaGallery):
+                media = item.items[0].media
+                return getattr(media, "url", str(media))
+            elif isinstance(item, discord.ui.Thumbnail):
+                media = item.media
+                return getattr(media, "url", str(media))
+        return None
+
+    img1 = get_image_url(container1)
+    img2 = get_image_url(container2)
+    assert img1 is not None
+    # Image must be identical across actions on the same event
+    assert img1 == img2
+
+    # Event with extra_data.selected_image_url explicitly pinned
+    db_pinned = {
+        "event_id": "pinned_evt",
+        "title": "Pinned",
+        "image_urls": images,
+        "extra_data": '{"selected_image_url": "https://example.com/pinned.png"}',
+    }
+    container_pinned = build_card_container(mock_bot, "pinned_evt", event_conf, db_pinned, base_active_set, [])
+    assert get_image_url(container_pinned) == "https://example.com/pinned.png"
+

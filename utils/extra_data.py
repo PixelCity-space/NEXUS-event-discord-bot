@@ -22,6 +22,7 @@ class EventExtraData:
     custom_reminder_msg: Optional[str] = None
     thread_id: Optional[int] = None
     recurrence_limit_date: Optional[int] = None
+    selected_image_url: Optional[str] = None
     extra_fields: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -60,6 +61,7 @@ class EventExtraData:
             "custom_reminder_msg",
             "thread_id",
             "recurrence_limit_date",
+            "selected_image_url",
         }
 
         role_limits = d.get("role_limits")
@@ -95,6 +97,8 @@ class EventExtraData:
             except (ValueError, TypeError):
                 rec_limit_date = None
 
+        selected_image_url = str(d.get("selected_image_url")).strip() if d.get("selected_image_url") else None
+
         extra_fields = {k: v for k, v in d.items() if k not in known_keys}
 
         return cls(
@@ -105,6 +109,7 @@ class EventExtraData:
             custom_reminder_msg=d.get("custom_reminder_msg"),
             thread_id=thread_id,
             recurrence_limit_date=rec_limit_date,
+            selected_image_url=selected_image_url,
             extra_fields=extra_fields,
         )
 
@@ -125,6 +130,8 @@ class EventExtraData:
             res["thread_id"] = self.thread_id
         if self.recurrence_limit_date is not None:
             res["recurrence_limit_date"] = self.recurrence_limit_date
+        if self.selected_image_url is not None:
+            res["selected_image_url"] = self.selected_image_url
         res.update(self.extra_fields)
         return res
 
