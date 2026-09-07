@@ -1,11 +1,13 @@
-import pytest
 import discord
+import pytest
+
 from utils.emoji_utils import (
     parse_emoji_config,
     resolve_placeholders,
     split_emoji,
     to_emoji,
 )
+
 
 def test_parse_emoji_config_valid():
     """Test parsing multi-line emoji configuration strings with flags and limits."""

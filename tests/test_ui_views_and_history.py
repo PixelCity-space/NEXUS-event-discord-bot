@@ -1,11 +1,14 @@
 import time
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import discord
+import pytest
+
 from cogs.event_commands.views.history import EventHistoryView
 from cogs.event_commands.views.my_events import MyEventsView
 from cogs.event_ui.views.edit_choice import EditChoiceView
 from cogs.event_ui.views.status_choice import StatusChoiceView
+
 
 @pytest.fixture
 def mock_bot():
@@ -193,7 +196,7 @@ async def test_status_choice_view_single_and_series(mock_bot, mock_interaction):
          patch("database.update_event_status_bulk", new_callable=AsyncMock) as mock_up_bulk, \
          patch("database.get_active_event", new_callable=AsyncMock) as mock_get_ev, \
          patch("database.get_rsvps", new_callable=AsyncMock) as mock_get_rsvps, \
-         patch("cogs.event_ui.views.dynamic_card.DynamicEventView.prepare", new_callable=AsyncMock) as mock_prep, \
+         patch("cogs.event_ui.views.dynamic_card.DynamicEventView.prepare", new_callable=AsyncMock), \
          patch("cogs.event_ui.views.status_choice.send_event_alert", new_callable=AsyncMock) as mock_alert:
 
         mock_get_ev.return_value = db_event

@@ -1,4 +1,3 @@
-import json
 import datetime
 from dateutil import tz
 import discord
@@ -7,6 +6,7 @@ from database import DEFAULT_TIMEZONE
 from utils.auth import is_admin
 from utils.i18n import t
 from utils.logger import log
+from utils.extra_data import parse_extra_data
 from ..config import get_event_conf, get_active_set
 from ..card_builder import build_card_container, build_card_buttons, update_button_states
 from ..rsvp_manager import handle_rsvp as rsvp_handler, try_promote_waiting as promote_handler
@@ -44,14 +44,8 @@ class DynamicEventView(discord.ui.LayoutView):
             self.event_conf = get_event_conf(db_event["config_name"])
             if not self.event_conf:
                 self.event_conf = dict(db_event)
-                ex_raw = db_event.get("extra_data")
-                if ex_raw:
-                    try:
-                        ex_dict = json.loads(ex_raw) if isinstance(ex_raw, str) else ex_raw
-                        if isinstance(ex_dict, dict):
-                            self.event_conf.update(ex_dict)
-                    except Exception as e:
-                        log.debug("prepare extra_data: %s", e)
+                ex_dto = parse_extra_data(db_event.get("extra_data"))
+                self.event_conf.update(ex_dto.to_dict())
 
         if db_event:
             merged = dict(self.event_conf or {})

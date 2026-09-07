@@ -7,6 +7,7 @@ from .connection import (
     MAX_EVENT_REMINDERS,
     DatabaseManager,
     db_manager,
+    create_pool,
     set_pool,
     get_pool,
     init_db,
@@ -48,6 +49,7 @@ from .repositories.events import (
 from .repositories.rsvps import (
     get_rsvps,
     update_rsvp,
+    join_or_update_rsvp_atomic,
     get_rsvps_with_time,
     promote_next_waiting,
     promote_waiting_users_atomic,
@@ -97,6 +99,7 @@ __all__ = [
     "MAX_EVENT_REMINDERS",
     "DatabaseManager",
     "db_manager",
+    "create_pool",
     "set_pool",
     "get_pool",
     "init_db",
@@ -133,6 +136,7 @@ __all__ = [
     # RSVPs
     "get_rsvps",
     "update_rsvp",
+    "join_or_update_rsvp_atomic",
     "get_rsvps_with_time",
     "promote_next_waiting",
     "promote_waiting_users_atomic",

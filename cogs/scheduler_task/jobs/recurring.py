@@ -1,7 +1,6 @@
 from typing import Any
 import uuid
 import datetime
-import json
 import discord
 import database
 from utils.emojis import PING
@@ -9,6 +8,7 @@ from utils.i18n import t, load_guild_translations
 from utils.logger import log
 from utils.enums import EventStatus
 from utils.templates import get_event_conf
+from utils.extra_data import parse_extra_data
 from cogs.event_ui import DynamicEventView
 from services.recurrence_service import evaluate_repost_readiness
 
@@ -63,8 +63,20 @@ async def handle_reposting(bot: discord.Client, db_event: dict[str, Any], now: f
     if guild_id:
         await load_guild_translations(guild_id)
 
-    channel = bot.get_channel(int(channel_id))
-    if channel:
+    cid = int(channel_id)
+    channel = bot.get_channel(cid)
+    if not channel:
+        try:
+            channel = await bot.fetch_channel(cid)
+        except Exception as e:
+            log.error(
+                "[Scheduler] Failed to fetch channel %s for reposted event %s: %s",
+                cid, new_event_id, e,
+                guild_id=guild_id,
+            )
+            return
+
+    try:
         view = DynamicEventView(bot, new_event_id, event_conf)
         await view.prepare()
 
@@ -91,13 +103,17 @@ async def handle_reposting(bot: discord.Client, db_event: dict[str, Any], now: f
                 
                 thread = await new_msg.create_thread(name=thread_name[:100])
                 
-                extra_data = event_conf.get("extra_data", {})
-                if isinstance(extra_data, str):
-                    extra_data = json.loads(extra_data)
-                extra_data["thread_id"] = thread.id
-                event_conf["extra_data"] = json.dumps(extra_data)
+                extra_dto = parse_extra_data(event_conf.get("extra_data"))
+                extra_dto.thread_id = thread.id
+                event_conf["extra_data"] = extra_dto.to_json()
                 await database.update_active_event(new_event_id, event_conf)
                 
                 log.info("[Scheduler] Created thread '%s' for reposted event %s", thread_name, new_event_id, guild_id=guild_id)
             except Exception as te:
                 log.error("[Scheduler] Failed to create thread for reposted event: %s", te, guild_id=guild_id)
+    except Exception as e:
+        log.error(
+            "[Scheduler] Failed to send reposted event card %s to channel %s: %s",
+            new_event_id, cid, e,
+            guild_id=guild_id,
+        )

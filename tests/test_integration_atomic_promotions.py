@@ -1,9 +1,13 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+
 from database.repositories.rsvps import (
-    promote_waiting_users_atomic,
+    join_or_update_rsvp_atomic,
     promote_next_waiting,
+    promote_waiting_users_atomic,
 )
+
 
 def _create_mock_pool(rsvps_in_db):
     mock_conn = AsyncMock()
@@ -111,3 +115,91 @@ async def test_integration_single_user_promote_next_waiting():
         promoted_uid = await promote_next_waiting("EVT-1", "wait_dps", "dps")
         assert promoted_uid == 999
         mock_pool.execute.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_integration_join_or_update_rsvp_atomic_success_and_row_lock():
+    """Integration: join_or_update_rsvp_atomic locks event row and assigns normal status when capacity is free."""
+    rsvps_in_db = [{"user_id": 101, "status": "accepted", "joined_at": 1000}]
+    mock_pool, mock_conn = _create_mock_pool(rsvps_in_db)
+
+    with patch("database.repositories.rsvps.get_pool", return_value=mock_pool):
+        res = await join_or_update_rsvp_atomic(
+            event_id="EVT-100",
+            user_id=202,
+            status="accepted",
+            positive_statuses=["accepted"],
+            max_accepted=5,
+        )
+
+        assert res["target_status"] == "accepted"
+        assert res["old_status"] is None
+        assert res["is_full"] is False
+        assert res["is_waitlist"] is False
+
+        # Verify row lock SELECT FOR UPDATE was executed
+        lock_calls = [c for c in mock_conn.execute.call_args_list if "FOR UPDATE" in str(c)]
+        assert len(lock_calls) >= 1
+
+@pytest.mark.asyncio
+async def test_integration_join_or_update_rsvp_atomic_overflow_to_waitlist():
+    """Integration: join_or_update_rsvp_atomic puts user into waitlist when event is at capacity."""
+    rsvps_in_db = [{"user_id": 101, "status": "accepted", "joined_at": 1000}]
+    mock_pool, mock_conn = _create_mock_pool(rsvps_in_db)
+
+    with patch("database.repositories.rsvps.get_pool", return_value=mock_pool):
+        res = await join_or_update_rsvp_atomic(
+            event_id="EVT-100",
+            user_id=202,
+            status="accepted",
+            positive_statuses=["accepted"],
+            max_accepted=1,
+            use_waiting_list=True,
+        )
+
+        assert res["target_status"] == "wait_accepted"
+        assert res["is_waitlist"] is True
+        assert res["is_full"] is False
+
+@pytest.mark.asyncio
+async def test_integration_join_or_update_rsvp_atomic_position_full():
+    """Integration: join_or_update_rsvp_atomic flags full when capacity is full and waitlist is disabled."""
+    rsvps_in_db = [{"user_id": 101, "status": "accepted", "joined_at": 1000}]
+    mock_pool, mock_conn = _create_mock_pool(rsvps_in_db)
+
+    with patch("database.repositories.rsvps.get_pool", return_value=mock_pool):
+        res = await join_or_update_rsvp_atomic(
+            event_id="EVT-100",
+            user_id=202,
+            status="accepted",
+            positive_statuses=["accepted"],
+            max_accepted=1,
+            use_waiting_list=False,
+        )
+
+        assert res["is_full"] is True
+        assert res["error"] == "position_full"
+        assert res["target_status"] is None
+
+@pytest.mark.asyncio
+async def test_integration_join_or_update_rsvp_atomic_waitlist_limit_reached():
+    """Integration: join_or_update_rsvp_atomic flags waitlist full when waitlist limit is reached."""
+    rsvps_in_db = [
+        {"user_id": 101, "status": "accepted", "joined_at": 1000},
+        {"user_id": 102, "status": "wait_accepted", "joined_at": 1010},
+    ]
+    mock_pool, mock_conn = _create_mock_pool(rsvps_in_db)
+
+    with patch("database.repositories.rsvps.get_pool", return_value=mock_pool):
+        res = await join_or_update_rsvp_atomic(
+            event_id="EVT-100",
+            user_id=202,
+            status="accepted",
+            positive_statuses=["accepted"],
+            max_accepted=1,
+            use_waiting_list=True,
+            waiting_list_limit=1,
+        )
+
+        assert res["is_full"] is True
+        assert res["error"] == "waitlist_full"
+        assert res["target_status"] is None

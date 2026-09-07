@@ -1,7 +1,7 @@
-import json
 import discord
 from discord import ui
 from utils.i18n import t
+from utils.extra_data import parse_extra_data
 
 class NotificationSettingsModal(ui.Modal):
     """Modal for configuring custom promotion messages upon promotion from waiting list."""
@@ -10,41 +10,19 @@ class NotificationSettingsModal(ui.Modal):
         super().__init__(title=t("MODAL_NOTIFICATION_SETTINGS", guild_id=wizard_view.guild_id)[:45])
         self.wizard_view = wizard_view
         
-        extra = wizard_view.data.get("extra_data")
-        if not extra:
-            extra = {}
-        elif isinstance(extra, str):
-            try:
-                extra = json.loads(extra)
-            except Exception:
-                extra = {}
-        
-        if not isinstance(extra, dict):
-            extra = {}
-            
+        extra_dto = parse_extra_data(wizard_view.data.get("extra_data"))
         self.promo_input = ui.TextInput(
             label=t("LBL_PROMO_MSG", guild_id=wizard_view.guild_id)[:45],
-            default=extra.get("custom_promo_msg", ""),
+            default=extra_dto.custom_promo_msg or "",
             style=discord.TextStyle.paragraph,
             required=False
         )
         self.add_item(self.promo_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        extra = self.wizard_view.data.get("extra_data")
-        if not extra:
-            extra = {}
-        elif isinstance(extra, str):
-            try:
-                extra = json.loads(extra)
-            except Exception:
-                extra = {}
-                
-        if not isinstance(extra, dict):
-            extra = {}
-            
-        extra["custom_promo_msg"] = self.promo_input.value
-        self.wizard_view.data["extra_data"] = json.dumps(extra)
+        extra_dto = parse_extra_data(self.wizard_view.data.get("extra_data"))
+        extra_dto.custom_promo_msg = self.promo_input.value
+        self.wizard_view.data["extra_data"] = extra_dto.to_json()
         await self.wizard_view.save_to_draft()
         await self.wizard_view.refresh_message(interaction)
 

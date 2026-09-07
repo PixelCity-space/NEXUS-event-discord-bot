@@ -1,12 +1,15 @@
 import time
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from utils.presence import (
-    _get_cached_stats,
-    _get_cached_presence_config,
-    _stats_cache,
     _config_cache,
+    _get_cached_presence_config,
+    _get_cached_stats,
+    _stats_cache,
 )
+
 
 @pytest.mark.asyncio
 async def test_stats_cache_ttl():

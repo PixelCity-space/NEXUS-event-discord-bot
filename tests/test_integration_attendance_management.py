@@ -1,12 +1,15 @@
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import discord
+import pytest
+
 from cogs.attendance.cogs.attendance_cog import AttendanceCog
 from cogs.attendance.views.attendance_view import AttendanceView
 from database.repositories.rsvps import (
     get_event_reliability_audit,
     get_guild_reliability_stats,
 )
+
 
 @pytest.mark.asyncio
 async def test_integration_attendance_cog_manage_success_flow():

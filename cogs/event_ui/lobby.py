@@ -1,17 +1,16 @@
 import time
 import database
+from utils.lobby_utils import (
+    count_positive_rsvps,
+    effective_lobby_capacity,
+    lobby_is_full,
+    positive_status_ids,
+    role_limits_from_extra,
+)
 from .notifications import send_lobby_fill_notifications
 
 async def process_lobby_transition(bot, event_id: str, active_set: dict, guild_id_int: int):
     """Checks lobby capacity and transitions start time when full or reopens when unfilled."""
-    from utils.lobby_utils import (
-        count_positive_rsvps,
-        effective_lobby_capacity,
-        lobby_is_full,
-        positive_status_ids,
-        role_limits_from_extra,
-    )
-
     db_event = await database.get_active_event(event_id)
     if not db_event or not db_event.get("lobby_mode"):
         return

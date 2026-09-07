@@ -1,13 +1,20 @@
 import time
-import pytest
-import asyncio
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import discord
+import pytest
 from discord.ext import commands
+
 from cogs.scheduler_task.cog import SchedulerTask
 from cogs.scheduler_task.jobs.role_cleanup import check_role_cleanup
-from utils.presence import _get_cached_stats, _get_cached_presence_config, run_presence_rotator, start_presence_task
 from utils.auth import is_admin, is_master
+from utils.presence import (
+    _get_cached_presence_config,
+    _get_cached_stats,
+    run_presence_rotator,
+    start_presence_task,
+)
+
 
 @pytest.fixture
 def mock_bot():
@@ -110,7 +117,10 @@ async def test_presence_rotator_lifecycle(mock_bot):
 
         with patch("asyncio.get_event_loop") as mock_loop:
             mock_task = MagicMock()
-            mock_loop.return_value.create_task = MagicMock(return_value=mock_task)
+            def fake_create_task(coro):
+                coro.close()
+                return mock_task
+            mock_loop.return_value.create_task = MagicMock(side_effect=fake_create_task)
             mock_bot.loop = mock_loop.return_value
             task = start_presence_task(mock_bot)
             assert task is not None

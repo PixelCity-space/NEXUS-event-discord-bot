@@ -1,11 +1,13 @@
-import pytest
 from unittest.mock import AsyncMock, patch
-from discord import app_commands
+
+import pytest
+
 from services.event_service import (
     resolve_target_events,
     search_events_autocomplete,
     update_event_time_parsed,
 )
+
 
 @pytest.mark.asyncio
 async def test_resolve_target_events_single_event():

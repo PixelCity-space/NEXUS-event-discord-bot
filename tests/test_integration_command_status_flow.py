@@ -1,7 +1,10 @@
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import discord
+import pytest
+
 from cogs.event_commands.helpers import handle_status_change
+
 
 @pytest.mark.asyncio
 async def test_integration_status_change_cancel_single_event():

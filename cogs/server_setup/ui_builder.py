@@ -3,6 +3,7 @@ import discord
 from discord import ui
 import database
 from utils.i18n import t
+from utils.text_utils import safe_format
 from utils.emoji_utils import make_select_option, make_button
 from .config_schema import SettingDefinition, ServerSettings
 from .modals import ValidatedConfigModal
@@ -51,7 +52,7 @@ def create_setting_toggle_button(
     """Creates a boolean toggle button with validation hooks and database persistence."""
     is_on = current_value.lower() == "true"
     state_text = on_text if is_on else off_text
-    btn_label = label_format.format(state=state_text)
+    btn_label = safe_format(label_format, state=state_text)
     btn_style = discord.ButtonStyle.success if is_on else discord.ButtonStyle.secondary
 
     btn = make_button(label=btn_label, style=btn_style)

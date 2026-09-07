@@ -1,11 +1,11 @@
 import re
-import json
 import discord
 from discord import ui
 from dateutil import parser
 from database import DEFAULT_TIMEZONE
 from utils.i18n import t
 from utils.logger import log
+from utils.extra_data import parse_extra_data
 
 class SingleEventSupplementaryModal(ui.Modal):
     """Step 2 for Single / Lobby: timezone + channel + ping role + (lobby_expire_offset or max_accepted)."""
@@ -117,11 +117,9 @@ class Step2Modal(ui.Modal):
         else:
             try:
                 dt = parser.parse(limit_val)
-                extra = self.wizard_view.data.get("extra_data", {})
-                if isinstance(extra, str): 
-                    extra = json.loads(extra)
-                extra["recurrence_limit_date"] = dt.timestamp()
-                self.wizard_view.data["extra_data"] = json.dumps(extra)
+                extra_dto = parse_extra_data(self.wizard_view.data.get("extra_data"))
+                extra_dto.recurrence_limit_date = int(dt.timestamp())
+                self.wizard_view.data["extra_data"] = extra_dto.to_json()
                 self.wizard_view.data["recurrence_limit"] = 0
             except Exception as e:
                 log.debug("Step2Modal limit_date parse: %s", e)

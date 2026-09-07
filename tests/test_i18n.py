@@ -1,4 +1,5 @@
-from utils.i18n import t, GUILD_CACHE, ALL_MESSAGES
+from utils.i18n import ALL_MESSAGES, GUILD_CACHE, t
+
 
 def test_t_none_returns_empty():
     """Test translating None key returns an empty string."""

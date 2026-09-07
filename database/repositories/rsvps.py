@@ -45,6 +45,104 @@ async def promote_next_waiting(event_id: str, waiting_status: str, target_status
         return user_id
     return None
 
+async def join_or_update_rsvp_atomic(
+    event_id: str,
+    user_id: int,
+    status: str,
+    positive_statuses: list[str],
+    max_accepted: int = 0,
+    role_limits: Optional[dict[str, int]] = None,
+    use_waiting_list: bool = True,
+    waiting_list_limit: int = 0,
+) -> dict[str, Any]:
+    """
+    Atomically joins or updates an RSVP for a user under a PostgreSQL row-level lock.
+    Guarantees strict concurrency protection against overbooking and race conditions.
+    Returns:
+        dict with keys:
+            - target_status: Optional[str] (e.g. 'accepted', 'wait_accepted', 'declined', or None if full)
+            - old_status: Optional[str]
+            - is_full: bool
+            - is_waitlist: bool
+            - error: Optional[str] ('position_full', 'waitlist_full', None)
+    """
+    pool = await get_pool()
+    role_limits = role_limits or {}
+    now = time.time()
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # 1. Lock active_events row to serialize concurrent RSVPs for this event
+            await conn.execute(
+                "SELECT event_id FROM active_events WHERE event_id = $1 FOR UPDATE",
+                event_id,
+            )
+
+            # 2. Query all existing RSVPs under exclusive lock
+            rows = await conn.fetch(
+                "SELECT user_id, status, joined_at FROM rsvps WHERE event_id = $1 ORDER BY joined_at ASC FOR UPDATE",
+                event_id,
+            )
+            rsvps = [dict(r) for r in rows]
+
+            # 3. Locate user's existing status
+            old_status = next((r["status"] for r in rsvps if int(r["user_id"]) == int(user_id)), None)
+
+            # 4. Check capacity and limits if requesting a positive/limited status
+            target_status = status
+            is_target_positive = status in positive_statuses
+            role_limit = role_limits.get(status)
+
+            other_role_count = sum(1 for r in rsvps if r["status"] == status and int(r["user_id"]) != int(user_id))
+            role_capped = role_limit is not None and other_role_count >= role_limit
+
+            other_positive_count = sum(1 for r in rsvps if r["status"] in positive_statuses and int(r["user_id"]) != int(user_id))
+            event_capped = is_target_positive and max_accepted > 0 and other_positive_count >= max_accepted
+
+            if role_capped or event_capped:
+                if use_waiting_list:
+                    waitlist_target = f"wait_{status}"
+                    if waiting_list_limit > 0:
+                        other_waitlist_count = sum(
+                            1 for r in rsvps
+                            if str(r["status"]).startswith("wait_") and int(r["user_id"]) != int(user_id)
+                        )
+                        if other_waitlist_count >= waiting_list_limit and not str(old_status).startswith("wait_"):
+                            return {
+                                "target_status": None,
+                                "old_status": old_status,
+                                "is_full": True,
+                                "is_waitlist": False,
+                                "error": "waitlist_full",
+                            }
+                    target_status = waitlist_target
+                else:
+                    return {
+                        "target_status": None,
+                        "old_status": old_status,
+                        "is_full": True,
+                        "is_waitlist": False,
+                        "error": "position_full",
+                    }
+
+            # 5. Upsert RSVP record in the database
+            await conn.execute("""
+                INSERT INTO rsvps (event_id, user_id, status, joined_at)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT(event_id, user_id) DO UPDATE SET 
+                    status = EXCLUDED.status,
+                    joined_at = CASE WHEN rsvps.status != EXCLUDED.status THEN EXCLUDED.joined_at ELSE rsvps.joined_at END
+            """, event_id, int(user_id), target_status, now)
+
+            return {
+                "target_status": target_status,
+                "old_status": old_status,
+                "is_full": False,
+                "is_waitlist": str(target_status).startswith("wait_"),
+                "error": None,
+            }
+
+
 async def promote_waiting_users_atomic(
     event_id: str,
     positive_statuses: list[str],

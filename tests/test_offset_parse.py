@@ -1,5 +1,7 @@
 import datetime
+
 from utils.offset_parse import parse_offset
+
 
 def test_parse_offset_minutes():
     """Test duration strings in minutes (e.g. 15m, 45m)."""

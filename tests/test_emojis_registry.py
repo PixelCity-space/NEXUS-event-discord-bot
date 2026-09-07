@@ -1,14 +1,15 @@
-from utils.emojis import (
-    get_all_emojis,
-    SUCCESS,
-    ERROR,
-    WARNING,
-    INFO,
-    TEMP_STD_YES,
-    TEMP_MMO_TANK,
-    TEMP_SURVEY_LIKE,
-)
 from utils.emoji_utils import resolve_placeholders
+from utils.emojis import (
+    ERROR,
+    INFO,
+    SUCCESS,
+    TEMP_MMO_TANK,
+    TEMP_STD_YES,
+    TEMP_SURVEY_LIKE,
+    WARNING,
+    get_all_emojis,
+)
+
 
 def test_get_all_emojis_returns_dict():
     """Test get_all_emojis returns all uppercase emoji constants as a dictionary."""

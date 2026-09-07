@@ -1,9 +1,11 @@
 import datetime
+
 from services.recurrence_service import (
     compute_next_occurrence,
     evaluate_repost_readiness,
 )
 from utils.enums import EventStatus
+
 
 def test_compute_next_occurrence_weekdays():
     """Test weekdays recurrence correctly advances Friday to Monday."""

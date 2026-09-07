@@ -1,17 +1,19 @@
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from database.repositories.drafts import save_draft, get_draft, delete_draft
+
+from database.repositories.drafts import delete_draft, get_draft, save_draft
 from database.repositories.settings import (
-    save_guild_setting,
-    get_guild_setting,
-    get_all_guild_settings,
-    save_guild_translation,
-    get_guild_translations,
     delete_guild_translation,
+    get_all_guild_settings,
+    get_guild_setting,
+    get_guild_translations,
+    save_guild_setting,
+    save_guild_translation,
 )
-from database.repositories.emojis import save_emoji_set, get_all_custom_emoji_sets
-from utils.templates import load_custom_sets, get_active_set
+from utils.templates import get_active_set, load_custom_sets
+
 
 @pytest.mark.asyncio
 async def test_integration_event_draft_save_and_load():

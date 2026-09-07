@@ -1,8 +1,11 @@
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+
 import discord
+import pytest
+
+from utils.auth import is_admin, is_master, is_owner
 from utils.config import Config
-from utils.auth import is_admin, is_master
+
 
 @pytest.mark.asyncio
 async def test_is_admin_bot_owner():
@@ -84,3 +87,17 @@ async def test_is_master_check():
     # Non-master guild
     with patch.object(Config, "master_guild_ids", new_callable=PropertyMock, return_value=[888222]):
         assert await is_master(interaction) is False
+
+
+@pytest.mark.asyncio
+async def test_is_owner_check():
+    """Test is_owner strictly evaluates bot owner status."""
+    interaction = MagicMock(spec=discord.Interaction)
+    interaction.user = MagicMock()
+    interaction.client = MagicMock()
+    interaction.client.is_owner = AsyncMock(return_value=True)
+
+    assert await is_owner(interaction) is True
+
+    interaction.client.is_owner = AsyncMock(return_value=False)
+    assert await is_owner(interaction) is False

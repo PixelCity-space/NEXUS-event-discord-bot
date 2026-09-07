@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, List, Optional, Sequence, Union
+
+from utils.extra_data import parse_extra_data
 
 
 def positive_status_ids(active_set: dict) -> List[str]:
@@ -46,15 +47,8 @@ def effective_lobby_capacity(
 
 
 def role_limits_from_extra(extra_data: Union[str, dict, None]) -> Dict[str, Any]:
-    if not extra_data:
-        return {}
-    try:
-        d = json.loads(extra_data) if isinstance(extra_data, str) else extra_data
-        if isinstance(d, dict):
-            return d.get("role_limits") or {}
-    except Exception:
-        pass
-    return {}
+    """Extracts role limits dictionary from extra_data using EventExtraData DTO."""
+    return parse_extra_data(extra_data).role_limits
 
 
 def count_positive_rsvps(rsvps_rows: Sequence[Any], positive_statuses: Sequence[str]) -> int:

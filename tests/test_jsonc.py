@@ -1,7 +1,8 @@
-import json
-import tempfile
 import os
+import tempfile
+
 from utils.jsonc import load_jsonc
+
 
 def test_load_jsonc_with_comments():
     """Test JSON loading with // line comments."""

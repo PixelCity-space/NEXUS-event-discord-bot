@@ -1,9 +1,16 @@
-import io
 import csv
+import io
+
 import discord
+
 from services.attendance_service import calculate_attendance_stats
-from services.export_service import generate_events_csv, generate_rsvps_csv, create_csv_discord_file
+from services.export_service import (
+    create_csv_discord_file,
+    generate_events_csv,
+    generate_rsvps_csv,
+)
 from services.notification_service import normalize_rsvps
+
 
 def test_calculate_attendance_stats_empty():
     """Test attendance calculation with zero participants."""

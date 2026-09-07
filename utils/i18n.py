@@ -6,6 +6,8 @@ import database
 
 from utils.config import config
 from utils.emojis import get_all_emojis
+from utils.cache import guild_cache
+from utils.text_utils import safe_format
 
 # Cache emojis globally to avoid redundant function calls
 GLOBAL_EMOJIS = get_all_emojis()
@@ -34,24 +36,44 @@ if os.path.exists(LOCALES_DIR):
             except Exception as e:
                 print(f"Error loading {filename}: {e}")
 
-GUILD_CACHE = {} # {guild_id: {"overrides": {...}, "lang": "hu"}}
+GUILD_CACHE: dict[str, Any] = {}  # In-memory backwards-compatible cache interface
 
-async def load_guild_translations(guild_id: Optional[Any]) -> dict[str, Any]:
-    """Fetch overrides and settings from DB and cache them."""
+
+def invalidate_guild_cache(guild_id: Optional[Any]) -> None:
+    """Invalidates cached translation overrides and guild settings for a specific guild."""
+    if not guild_id:
+        return
+    gid_str = str(guild_id)
+    guild_cache.delete_sync(gid_str)
+    GUILD_CACHE.pop(gid_str, None)
+
+
+async def load_guild_translations(guild_id: Optional[Any], force_reload: bool = False) -> dict[str, Any]:
+    """Fetch overrides and settings from DB and cache them with TTL caching."""
     if not guild_id:
         return {"overrides": {}, "settings": {}, "lang": DEFAULT_LANG}
     gid_str = str(guild_id)
-    
+
+    # 1. Check if already cached and valid
+    if not force_reload:
+        cached = guild_cache.get_sync(gid_str)
+        if cached is not None:
+            GUILD_CACHE[gid_str] = cached
+            return cached
+
+    # 2. Fetch fresh data from PostgreSQL
     overrides = await database.get_guild_translations(gid_str)
     settings = await database.get_all_guild_settings(gid_str)
     guild_lang = settings.get("language", DEFAULT_LANG)
-    
-    GUILD_CACHE[gid_str] = {
+
+    data = {
         "overrides": overrides,
         "settings": settings,
         "lang": guild_lang
     }
-    return GUILD_CACHE[gid_str]
+    guild_cache.set_sync(gid_str, data, ttl=300.0)
+    GUILD_CACHE[gid_str] = data
+    return data
 
 def t(translation_key: Optional[str], guild_id: Optional[Any] = None, use_template_lang: bool = False, **kwargs) -> str:
     """
@@ -69,15 +91,21 @@ def t(translation_key: Optional[str], guild_id: Optional[Any] = None, use_templa
     gid_str = str(guild_id) if guild_id else None
 
     # 1. Check Guild Cache for overrides and preferred language
-    if gid_str and gid_str in GUILD_CACHE:
-        cache = GUILD_CACHE[gid_str]
-        text = cache["overrides"].get(translation_key)
-        
-        pref_lang = cache.get("lang", DEFAULT_LANG)
-        if use_template_lang and "settings" in cache:
-            tpl_lang = cache["settings"].get("template_language", "default")
-            if tpl_lang != "default":
-                pref_lang = tpl_lang
+    if gid_str:
+        cache = GUILD_CACHE.get(gid_str)
+        if cache is None:
+            cached = guild_cache.get_sync(gid_str)
+            if cached is not None:
+                GUILD_CACHE[gid_str] = cached
+                cache = cached
+
+        if cache:
+            text = cache.get("overrides", {}).get(translation_key)
+            pref_lang = cache.get("lang", DEFAULT_LANG)
+            if use_template_lang and "settings" in cache:
+                tpl_lang = cache["settings"].get("template_language", "default")
+                if tpl_lang != "default":
+                    pref_lang = tpl_lang
 
     # 2. If no override, try the preferred language file
     if text is None:
@@ -95,12 +123,7 @@ def t(translation_key: Optional[str], guild_id: Optional[Any] = None, use_templa
     # Merge global emojis with provided kwargs
     # Emojis are used for placeholders like {SUCCESS}, {ERROR}, etc.
     formatting_args = {**GLOBAL_EMOJIS, **kwargs}
-    
-    try:
-        return text.format(**formatting_args)
-    except Exception:
-        # If formatting fails (e.g. unexpected braces), return raw text
-        return str(text)
+    return safe_format(text, **formatting_args)
 
 
 # Essential Templates for the Notification Wizard

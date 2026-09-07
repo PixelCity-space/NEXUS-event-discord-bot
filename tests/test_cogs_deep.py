@@ -1,12 +1,14 @@
-import time
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import discord
+import pytest
+
 from cogs.attendance.cogs.attendance_cog import AttendanceCog
 from cogs.attendance.views.attendance_view import AttendanceView
 from cogs.emoji_wizard.modals.edit_set import EditEmojiSetModal
 from cogs.event_commands.helpers import handle_status_change
 from utils.enums import EventStatus
+
 
 @pytest.fixture
 def mock_bot():
@@ -66,7 +68,7 @@ async def test_attendance_view_build_and_toggle(mock_bot, mock_interaction):
         {"user_id": 102, "status": "accepted", "attendance": "present"},
     ]
     with patch("services.attendance_service.resolve_member_names_batch", new_callable=AsyncMock) as mock_names, \
-         patch("services.attendance_service.toggle_user_attendance", new_callable=AsyncMock) as mock_toggle:
+         patch("services.attendance_service.toggle_user_attendance", new_callable=AsyncMock):
 
         mock_names.return_value = {"101": "PlayerOne", "102": "PlayerTwo"}
         view = AttendanceView(mock_bot, event_id="EVT-100", participants=participants, guild_id="12345", title="Test Raid")

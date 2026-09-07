@@ -1,10 +1,12 @@
 import time
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import discord
-from utils.enums import EventStatus
-from cogs.event_ui.views.dynamic_card import DynamicEventView
+import pytest
+
 from cogs.event_ui.modals.postpone import PostponeModal
+from cogs.event_ui.views.dynamic_card import DynamicEventView
+
 
 @pytest.fixture
 def mock_bot():

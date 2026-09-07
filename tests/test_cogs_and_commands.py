@@ -1,18 +1,21 @@
 import time
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import discord
+import pytest
 from discord.ext import commands
-from cogs.server_setup.cog import ServerSetupCog
-from cogs.event_commands.cogs.event_cog import EventCommands
-from cogs.event_commands.cogs.admin_cog import AdminCommands
+
+from cogs.attendance import AttendanceView
+from cogs.emoji_wizard import ConfirmDeleteView, EmojiWizardView, TemplateChoiceView
+from cogs.event_commands.cogs.admin_cog import AdminCommands, ConfirmResetView
 from cogs.event_commands.cogs.draft_cog import DraftCommands
-from cogs.attendance import AttendanceCog, AttendanceView
-from cogs.emoji_wizard import EmojiWizardView, TemplateChoiceView, ConfirmDeleteView
-from cogs.message_wizard import MessageWizardView, MessageEditModal
-from cogs.master_commands import MasterCommands, MasterPresenceView
-from cogs.event_commands.views.my_events import MyEventsView
+from cogs.event_commands.cogs.event_cog import EventCommands
 from cogs.event_commands.views.history import EventHistoryView
+from cogs.event_commands.views.my_events import MyEventsView
+from cogs.master_commands import MasterCommands
+from cogs.message_wizard import MessageWizardView
+from cogs.server_setup.cog import ServerSetupCog
+
 
 @pytest.fixture
 def mock_bot():
@@ -142,6 +145,75 @@ async def test_admin_commands_and_draft_commands(mock_bot, mock_interaction):
         mock_del_draft.assert_called_once_with("D-1", 12345)
 
 @pytest.mark.asyncio
+async def test_admin_reset_and_confirm_view(mock_bot, mock_interaction):
+    admin_cog = AdminCommands(mock_bot)
+
+    # 1. Non-admin running /admin reset -> rejected
+    with patch("cogs.event_commands.cogs.admin_cog.is_admin", new_callable=AsyncMock) as mock_is_admin, \
+         patch("cogs.event_commands.cogs.admin_cog.load_guild_translations", new_callable=AsyncMock):
+        mock_is_admin.return_value = False
+        await admin_cog.reset.callback(admin_cog, mock_interaction)
+        mock_interaction.response.send_message.assert_called_once()
+
+    # 2. Admin running /admin reset -> sends warning view
+    mock_interaction.response.send_message.reset_mock()
+    with patch("cogs.event_commands.cogs.admin_cog.is_admin", new_callable=AsyncMock) as mock_is_admin, \
+         patch("cogs.event_commands.cogs.admin_cog.load_guild_translations", new_callable=AsyncMock):
+        mock_is_admin.return_value = True
+        await admin_cog.reset.callback(admin_cog, mock_interaction)
+        mock_interaction.response.send_message.assert_called_once()
+        args, kwargs = mock_interaction.response.send_message.call_args
+        view = kwargs.get("view")
+        assert isinstance(view, ConfirmResetView)
+        assert view.author_id == mock_interaction.user.id
+        assert len(view.children) == 2  # confirm and cancel buttons
+
+    # 3. ConfirmResetView.interaction_check: Unauthorized user (different user id)
+    reset_view = ConfirmResetView(author_id=999, guild_id=12345)
+    other_inter = MagicMock(spec=discord.Interaction)
+    other_inter.user = MagicMock()
+    other_inter.user.id = 888
+    other_inter.guild_id = 12345
+    other_inter.response = MagicMock()
+    other_inter.response.send_message = AsyncMock()
+
+    with patch("cogs.event_commands.cogs.admin_cog.is_admin", new_callable=AsyncMock) as mock_is_admin:
+        mock_is_admin.return_value = True
+        allowed = await reset_view.interaction_check(other_inter)
+        assert allowed is False
+        other_inter.response.send_message.assert_called_once()
+
+    # 4. ConfirmResetView.interaction_check: Authorized author and admin
+    auth_inter = MagicMock(spec=discord.Interaction)
+    auth_inter.user = MagicMock()
+    auth_inter.user.id = 999
+    auth_inter.guild_id = 12345
+    auth_inter.guild = MagicMock()
+    auth_inter.guild.id = 12345
+    auth_inter.response = MagicMock()
+    auth_inter.response.send_message = AsyncMock()
+
+    with patch("cogs.event_commands.cogs.admin_cog.is_admin", new_callable=AsyncMock) as mock_is_admin:
+        mock_is_admin.return_value = True
+        allowed = await reset_view.interaction_check(auth_inter)
+        assert allowed is True
+
+    # 5. Confirm button callback triggers reset_guild_data and invalidates guild cache
+    confirm_btn = view.children[0]
+    with patch("database.reset_guild_data", new_callable=AsyncMock) as mock_reset_db, \
+         patch("cogs.event_commands.cogs.admin_cog.invalidate_guild_cache") as mock_inval:
+        await confirm_btn.callback(auth_inter)
+        mock_reset_db.assert_called_once_with(12345)
+        mock_inval.assert_called_once_with(12345)
+        auth_inter.response.send_message.assert_called_once()
+
+    # 6. Cancel button callback
+    cancel_btn = view.children[1]
+    auth_inter.response.send_message.reset_mock()
+    await cancel_btn.callback(auth_inter)
+    auth_inter.response.send_message.assert_called_once()
+
+@pytest.mark.asyncio
 async def test_attendance_and_emoji_views(mock_bot, mock_interaction):
     # Attendance View
     participants = [{"user_id": 101, "status": "accepted", "attended": 0}]
@@ -184,3 +256,44 @@ async def test_message_wizard_and_master_commands(mock_bot, mock_interaction):
 
         await master_cog.stats.callback(master_cog, mock_interaction)
         mock_interaction.followup.send.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_and_clear_commands_permissions(mock_bot):
+    event_cog = EventCommands(mock_bot)
+    ctx = MagicMock(spec=commands.Context)
+    ctx.guild = MagicMock()
+    ctx.guild.id = 12345
+    ctx.send = AsyncMock()
+
+    # 1. Non-owner attempting !clear_commands -> rejected
+    with patch("cogs.event_commands.cogs.event_cog.is_owner", new_callable=AsyncMock) as mock_owner:
+        mock_owner.return_value = False
+        await event_cog.clear_commands_prefix.callback(event_cog, ctx)
+        ctx.send.assert_called()
+        mock_bot.tree.clear_commands.assert_not_called()
+
+    # 2. Owner executing !clear_commands -> succeeds
+    ctx.send.reset_mock()
+    with patch("cogs.event_commands.cogs.event_cog.is_owner", new_callable=AsyncMock) as mock_owner:
+        mock_owner.return_value = True
+        mock_bot.tree.sync = AsyncMock(return_value=[])
+        await event_cog.clear_commands_prefix.callback(event_cog, ctx)
+        mock_bot.tree.clear_commands.assert_called()
+
+    # 3. Non-owner attempting !sync global -> rejected
+    ctx.send.reset_mock()
+    mock_bot.tree.sync.reset_mock()
+    with patch("cogs.event_commands.cogs.event_cog.is_owner", new_callable=AsyncMock) as mock_owner:
+        mock_owner.return_value = False
+        await event_cog.sync_prefix.callback(event_cog, ctx, spec="global")
+        mock_bot.tree.sync.assert_not_called()
+
+    # 4. Owner executing !sync global -> succeeds
+    ctx.send.reset_mock()
+    with patch("cogs.event_commands.cogs.event_cog.is_owner", new_callable=AsyncMock) as mock_owner:
+        mock_owner.return_value = True
+        mock_bot.tree.sync = AsyncMock(return_value=[MagicMock(), MagicMock()])
+        await event_cog.sync_prefix.callback(event_cog, ctx, spec="global")
+        mock_bot.tree.sync.assert_called_once_with()
+

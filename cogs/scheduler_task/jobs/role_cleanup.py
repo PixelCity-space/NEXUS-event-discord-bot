@@ -34,18 +34,34 @@ async def check_role_cleanup(bot: discord.Client, db_event: dict[str, Any], now:
 
     if should_delete:
         guild = bot.get_guild(int(db_event["guild_id"]))
+        role_cleaned = False
         if guild:
             if not guild.me.guild_permissions.manage_roles:
-                log.warning("[Scheduler] Missing 'Manage Roles' permission to delete role %s in guild %s", temp_role_id, guild.id)
+                log.warning(
+                    "[Scheduler] Missing 'Manage Roles' permission to delete role %s in guild %s; will retry later.",
+                    temp_role_id, guild.id,
+                )
             else:
                 try:
                     role = guild.get_role(int(temp_role_id))
                     if role:
                         await role.delete(reason=f"Event {db_event['event_id']} finished/closed.")
                         log.info("[Scheduler] Deleted temp role %s for event %s", temp_role_id, db_event["event_id"])
+                    else:
+                        log.debug("[Scheduler] Temp role %s not found in guild %s (already deleted)", temp_role_id, guild.id)
+                    role_cleaned = True
+                except discord.NotFound:
+                    log.debug("[Scheduler] Temp role %s 404 NotFound in guild %s", temp_role_id, guild.id)
+                    role_cleaned = True
                 except Exception as e:
                     log.error("[Scheduler] Failed to delete role %s: %s", temp_role_id, e)
+        else:
+            log.warning(
+                "[Scheduler] Guild %s not cached/found to delete temp role %s; will retry later.",
+                db_event.get("guild_id"), temp_role_id,
+            )
         
-        # Clear from DB to prevent re-attempts even if permission was missing
-        pool = await database.get_pool()
-        await pool.execute("UPDATE active_events SET temp_role_id = 0 WHERE event_id = $1", db_event["event_id"])
+        # Only clear from DB if the role was successfully deleted or no longer exists
+        if role_cleaned:
+            pool = await database.get_pool()
+            await pool.execute("UPDATE active_events SET temp_role_id = 0 WHERE event_id = $1", db_event["event_id"])

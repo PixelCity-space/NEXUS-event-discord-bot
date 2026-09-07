@@ -1,6 +1,16 @@
 from typing import Optional
 from ..connection import get_pool
 from utils.logger import log
+from utils.cache import guild_cache
+
+def _invalidate_guild_cache(gid: str) -> None:
+    """Evicts a guild's configuration from both MemoryTTLCache and in-memory GUILD_CACHE."""
+    guild_cache.delete_sync(gid)
+    try:
+        from utils.i18n import GUILD_CACHE
+        GUILD_CACHE.pop(gid, None)
+    except Exception:
+        pass
 
 async def save_guild_setting(guild_id: str, key: str, value: str) -> None:
     """Upsert a guild setting with PK enforcement."""
@@ -13,6 +23,7 @@ async def save_guild_setting(guild_id: str, key: str, value: str) -> None:
             VALUES ($1, $2, $3)
             ON CONFLICT (guild_id, key) DO UPDATE SET value = EXCLUDED.value
         ''', gid, key, str(value))
+        _invalidate_guild_cache(gid)
         log.debug(f"DB: Successfully saved {key}")
     except Exception as e:
         log.error(f"DB ERROR saving guild setting {key}: {e}")
@@ -54,11 +65,13 @@ async def get_global_setting(key: str, default: Optional[str] = None) -> Optiona
 async def save_guild_translation(guild_id: str, key: str, value: str) -> None:
     """Save a per-guild translation override."""
     pool = await get_pool()
+    gid = str(guild_id)
     await pool.execute("""
         INSERT INTO guild_translations (guild_id, key, value)
         VALUES ($1, $2, $3)
         ON CONFLICT (guild_id, key) DO UPDATE SET value = EXCLUDED.value
-    """, str(guild_id), key, value)
+    """, gid, key, value)
+    _invalidate_guild_cache(gid)
 
 async def get_guild_translations(guild_id: str) -> dict[str, str]:
     """Fetch all translation string overrides for a guild."""
@@ -69,12 +82,15 @@ async def get_guild_translations(guild_id: str) -> dict[str, str]:
 async def delete_guild_translation(guild_id: str, key: str) -> None:
     """Delete a per-guild translation override."""
     pool = await get_pool()
-    await pool.execute("DELETE FROM guild_translations WHERE guild_id = $1 AND key = $2", str(guild_id), key)
+    gid = str(guild_id)
+    await pool.execute("DELETE FROM guild_translations WHERE guild_id = $1 AND key = $2", gid, key)
+    _invalidate_guild_cache(gid)
 
 async def reset_guild_data(guild_id: str) -> None:
     """Remove all bot-owned data for a guild (events, RSVPs, drafts, emojis, settings, translations)."""
     pool = await get_pool()
     gid = str(guild_id)
+    _invalidate_guild_cache(gid)
     async with pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute(

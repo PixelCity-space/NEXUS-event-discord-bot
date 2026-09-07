@@ -1,10 +1,13 @@
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from services.attendance_service import (
     get_eligible_attendance_participants,
-    toggle_user_attendance,
     search_attendance_events_autocomplete,
+    toggle_user_attendance,
 )
+
 
 @pytest.mark.asyncio
 async def test_get_eligible_attendance_participants_positive_filtering():

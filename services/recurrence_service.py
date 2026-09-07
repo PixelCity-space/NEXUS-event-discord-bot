@@ -1,10 +1,10 @@
 from typing import Any, Optional
-import json
 import datetime
 from dateutil.relativedelta import relativedelta, MO, TU, WE, TH, FR, SA, SU
 from dateutil import tz as dttz
 from utils.offset_parse import parse_offset
 from utils.enums import EventStatus
+from utils.extra_data import parse_extra_data
 
 def compute_next_occurrence(
     current_start_ts: float,
@@ -162,15 +162,10 @@ def evaluate_repost_readiness(
     if rec_limit > 0 and (rec_count + 1) >= rec_limit:
         return False, None, "closed"
 
-    extra_data = db_event.get("extra_data")
-    if extra_data:
-        try:
-            ed = json.loads(extra_data) if isinstance(extra_data, str) else extra_data
-            limit_ts = ed.get("recurrence_limit_date") if isinstance(ed, dict) else None
-            if limit_ts and next_start > limit_ts:
-                return False, None, EventStatus.CLOSED
-        except Exception:
-            pass
+    extra_dto = parse_extra_data(db_event.get("extra_data"))
+    limit_ts = extra_dto.recurrence_limit_date
+    if limit_ts and next_start > limit_ts:
+        return False, None, EventStatus.CLOSED
 
     return True, next_start, None
 
@@ -195,11 +190,9 @@ def should_auto_archive_event(
 
     archive_threshold = archive_hours * 3600.0
     end_ts = db_event.get("end_time")
+    reference_ts = float(end_ts) if end_ts else float(start_ts)
 
-    if end_ts and now > float(end_ts):
-        return True
-
-    if now > (float(start_ts) + archive_threshold):
+    if now > (reference_ts + archive_threshold):
         created_at = db_event.get("created_at") or 0
         if now > (float(created_at) + 900):  # 15 min grace period
             return True

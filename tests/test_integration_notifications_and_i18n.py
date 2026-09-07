@@ -1,11 +1,14 @@
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
+
 import discord
+import pytest
+
 from services.notification_service import resolve_target_recipients, send_event_alert
-from utils.i18n import t, GUILD_CACHE
-from utils.emojis import SUCCESS, CALENDAR
-from utils.emoji_utils import parse_emoji_config, make_button, make_select_option
+from utils.emoji_utils import make_button, make_select_option, parse_emoji_config
+from utils.emojis import CALENDAR, SUCCESS
+from utils.i18n import GUILD_CACHE, t
 from utils.templates import get_template_data
+
 
 @pytest.mark.asyncio
 async def test_integration_notification_audience_resolution_to_dispatch():

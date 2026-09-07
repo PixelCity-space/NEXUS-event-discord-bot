@@ -11,17 +11,15 @@ from ..ui_builder import (
     create_color_dropdown,
 )
 
+from .registry import register_view
+
+@register_view("main")
 class ServerSetupView(BaseSetupView):
     """Visual console for guild settings and defaults using Components V2."""
 
     async def prepare(self, interaction: discord.Interaction):
         """Asynchronously build UI components and bind callbacks."""
         self.clear_items()
-        
-        # Deferred import to prevent circular dependencies
-        from .general import GeneralSetupView
-        from .reminders import ReminderSetupView
-        from .event_defaults import EventDefaultsView
 
         # 1. Navigation Action Buttons
         general_btn = make_button(
@@ -29,7 +27,7 @@ class ServerSetupView(BaseSetupView):
             style=discord.ButtonStyle.secondary
         )
         async def general_cb(it: discord.Interaction):
-            await self.navigate_to(GeneralSetupView, it)
+            await self.navigate_to("general", it)
         general_btn.callback = general_cb
 
         reminder_btn = make_button(
@@ -37,7 +35,7 @@ class ServerSetupView(BaseSetupView):
             style=discord.ButtonStyle.secondary
         )
         async def reminder_cb(it: discord.Interaction):
-            await self.navigate_to(ReminderSetupView, it)
+            await self.navigate_to("reminders", it)
         reminder_btn.callback = reminder_cb
 
         defaults_btn = make_button(
@@ -45,7 +43,7 @@ class ServerSetupView(BaseSetupView):
             style=discord.ButtonStyle.secondary
         )
         async def defaults_cb(it: discord.Interaction):
-            await self.navigate_to(EventDefaultsView, it)
+            await self.navigate_to("event_defaults", it)
         defaults_btn.callback = defaults_cb
 
         # 2. Timezone Modal Button

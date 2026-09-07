@@ -1,14 +1,17 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
-from utils.i18n import t, GUILD_CACHE, ALL_MESSAGES
-from utils.templates import ICON_SET_TEMPLATES, get_template_data
-from utils.calendar_utils import generate_ics_batch
-from services.notification_service import send_event_alert
+
 from database.repositories.events import (
-    normalize_rsvp_allowed_role_ids_value,
     normalize_image_urls_for_store,
+    normalize_rsvp_allowed_role_ids_value,
 )
 from database.repositories.reminders import normalize_reminders_for_store
+from services.notification_service import send_event_alert
+from utils.calendar_utils import generate_ics_batch
+from utils.i18n import ALL_MESSAGES, GUILD_CACHE, t
+from utils.templates import ICON_SET_TEMPLATES, get_template_data
+
 
 def test_integration_i18n_template_language_setting_priority():
     """Integration: template_language setting switches button translations while keeping general language."""

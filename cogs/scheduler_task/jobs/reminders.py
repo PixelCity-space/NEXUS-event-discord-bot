@@ -3,6 +3,7 @@ import discord
 import database
 from utils.offset_parse import parse_offset
 from utils.i18n import t
+from utils.text_utils import safe_format
 from utils.templates import get_active_set
 from services.notification_service import resolve_target_recipients, send_event_alert
 
@@ -87,9 +88,9 @@ async def handle_reminders(
 
         rem_text_raw = r.get("custom_message") or shared_custom_msg
         if rem_text_raw:
-            rem_text = rem_text_raw.format(title=db_event["title"])
+            rem_text = safe_format(rem_text_raw, title=db_event.get("title", ""))
         else:
-            rem_text = t("MSG_REM_DESC", guild_id=guild_id, title=db_event["title"])
+            rem_text = t("MSG_REM_DESC", guild_id=guild_id, title=db_event.get("title", ""))
 
         embed = discord.Embed(
             title=t("LBL_REMINDER_TITLE", guild_id=guild_id),

@@ -1,14 +1,20 @@
 import time
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
+
 import discord
-from utils.enums import EventStatus
-from cogs.event_ui.participant_formatter import ParticipantFormatter, ParticipantRosterData
+import pytest
+
 from cogs.event_ui.card_builder import (
-    build_card_container,
     build_card_buttons,
+    build_card_container,
     update_button_states,
 )
+from cogs.event_ui.participant_formatter import (
+    ParticipantFormatter,
+    ParticipantRosterData,
+)
+from utils.enums import EventStatus
+
 
 @pytest.fixture
 def base_active_set():

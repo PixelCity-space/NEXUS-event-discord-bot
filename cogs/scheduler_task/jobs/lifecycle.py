@@ -1,24 +1,20 @@
-import time
 from typing import Any, Optional
 import discord
 import database
 from utils.logger import log
 from utils.enums import EventStatus
+from utils.cache import archive_hours_cache
 from cogs.event_ui import DynamicEventView
 from services.recurrence_service import should_auto_archive_event, is_lobby_expired
-
-# In-memory TTL cache for guild auto-archive settings (reduces per-event DB queries)
-_archive_hours_cache: dict[str, tuple[float, float]] = {}
-ARCHIVE_HOURS_CACHE_TTL = 300.0  # 5 minutes
 
 async def get_cached_auto_archive_hours(guild_id: Optional[str]) -> float:
     """Retrieves cached auto-archive hours for a guild with a 5-minute TTL."""
     if not guild_id:
         return 12.0
-    now = time.time()
-    cached = _archive_hours_cache.get(str(guild_id))
-    if cached and now < cached[1]:
-        return cached[0]
+    gid_str = str(guild_id)
+    cached = archive_hours_cache.get_sync(gid_str)
+    if cached is not None:
+        return cached
 
     archive_hours_str = await database.get_guild_setting(guild_id, "auto_archive_hours", default="12")
     try:
@@ -26,7 +22,7 @@ async def get_cached_auto_archive_hours(guild_id: Optional[str]) -> float:
     except Exception:
         val = 12.0
 
-    _archive_hours_cache[str(guild_id)] = (val, now + ARCHIVE_HOURS_CACHE_TTL)
+    archive_hours_cache.set_sync(gid_str, val, ttl=300.0)
     return val
 
 async def refresh_event_card(bot: discord.Client, db_event: dict[str, Any]) -> None:

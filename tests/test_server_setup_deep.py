@@ -1,25 +1,27 @@
-import time
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import discord
+import pytest
+
 from cogs.server_setup.config_schema import (
-    validate_positive_int,
-    validate_hex_color,
-    validate_offset_list,
-    validate_non_empty,
     ServerSettings,
+    validate_hex_color,
+    validate_non_empty,
+    validate_offset_list,
+    validate_positive_int,
 )
 from cogs.server_setup.modals import ValidatedConfigModal
-from cogs.server_setup.views.main_menu import ServerSetupView
-from cogs.server_setup.views.general import GeneralSetupView
-from cogs.server_setup.views.reminders import ReminderSetupView
-from cogs.server_setup.views.event_defaults import EventDefaultsView
 from cogs.server_setup.ui_builder import (
-    create_setting_modal_button,
-    create_setting_toggle_button,
     create_color_dropdown,
+    create_setting_modal_button,
     create_setting_select,
+    create_setting_toggle_button,
 )
+from cogs.server_setup.views.event_defaults import EventDefaultsView
+from cogs.server_setup.views.general import GeneralSetupView
+from cogs.server_setup.views.main_menu import ServerSetupView
+from cogs.server_setup.views.reminders import ReminderSetupView
+
 
 @pytest.fixture
 def mock_bot():

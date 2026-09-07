@@ -1,13 +1,14 @@
 import datetime
-import pytest
+
 from services.recurrence_service import (
     compute_next_occurrence,
     compute_repost_time,
     evaluate_repost_readiness,
-    should_auto_archive_event,
     is_lobby_expired,
+    should_auto_archive_event,
 )
 from utils.enums import EventStatus
+
 
 def test_compute_next_occurrence_daily_and_weekly():
     """Test daily, weekly, and biweekly recurrence calculations."""
@@ -110,18 +111,28 @@ def test_evaluate_repost_readiness():
     assert status == "closed"
 
 def test_should_auto_archive_event():
-    """Test auto-archival evaluation for finished one-time events."""
+    """Test auto-archival evaluation for finished one-time events respecting archive_hours grace period."""
     now = 1780100000.0
 
-    # Finished event with end_time in the past
-    ended_event = {
+    # Event with end_time in the past, beyond archive_hours threshold (1 hour threshold, ended 2 hours ago)
+    ended_event_archived = {
+        "status": EventStatus.ACTIVE,
+        "recurrence_type": "once",
+        "start_time": now - 10800, # started 3h ago
+        "end_time": now - 7200,    # ended 2h ago
+        "created_at": now - 20000,
+    }
+    assert should_auto_archive_event(ended_event_archived, now, archive_hours=1.0) is True
+
+    # Event ended recently (30 min ago), but server has 12h auto-archive grace period -> NOT archived yet
+    ended_event_in_grace_period = {
         "status": EventStatus.ACTIVE,
         "recurrence_type": "once",
         "start_time": now - 7200,
-        "end_time": now - 1800,
-        "created_at": now - 10000,
+        "end_time": now - 1800,    # ended 30m ago
+        "created_at": now - 20000,
     }
-    assert should_auto_archive_event(ended_event, now) is True
+    assert should_auto_archive_event(ended_event_in_grace_period, now, archive_hours=12.0) is False
 
     # Event still ongoing
     ongoing_event = {
@@ -131,17 +142,17 @@ def test_should_auto_archive_event():
         "end_time": now + 1800,
         "created_at": now - 3600,
     }
-    assert should_auto_archive_event(ongoing_event, now) is False
+    assert should_auto_archive_event(ongoing_event, now, archive_hours=1.0) is False
 
     # Recurring events should not be auto-archived by this rule
     recurring_event = {
         "status": EventStatus.ACTIVE,
         "recurrence_type": "daily",
-        "start_time": now - 7200,
-        "end_time": now - 1800,
-        "created_at": now - 10000,
+        "start_time": now - 20000,
+        "end_time": now - 15000,
+        "created_at": now - 30000,
     }
-    assert should_auto_archive_event(recurring_event, now) is False
+    assert should_auto_archive_event(recurring_event, now, archive_hours=1.0) is False
 
 def test_is_lobby_expired():
     """Test expiration check for fill-to-start lobby events."""

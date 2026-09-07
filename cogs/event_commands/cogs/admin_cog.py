@@ -4,10 +4,29 @@ from discord.ext import commands
 from discord import app_commands, ui
 import database
 from utils.auth import is_admin
-from utils.i18n import t, load_guild_translations
+from utils.i18n import t, load_guild_translations, invalidate_guild_cache
 from utils.logger import log
 from utils.emoji_utils import make_button
 from ..views.audit import ReliabilityAuditView
+
+
+class ConfirmResetView(ui.View):
+    """Secure confirmation view enforcing author-only and admin permissions."""
+
+    def __init__(self, author_id: int, guild_id: int, timeout: float = 60.0):
+        super().__init__(timeout=timeout)
+        self.author_id = author_id
+        self.guild_id = guild_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id or not await is_admin(interaction):
+            await interaction.response.send_message(
+                t("ERR_ADMIN_ONLY", guild_id=interaction.guild_id or self.guild_id),
+                ephemeral=True,
+            )
+            return False
+        return True
+
 
 class AdminCommands(commands.GroupCog, name="admin"):
     """Cog for server administrators to manage server settings and audits."""
@@ -68,38 +87,6 @@ class AdminCommands(commands.GroupCog, name="admin"):
                 choices.append(app_commands.Choice(name=label[:100], value=e['event_id']))
         return choices[:25]
 
-    @app_commands.command(name="messages", description="Manage global bot messages and strings")
-    async def admin_messages(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        guild_id = interaction.guild_id
-        try:
-            await load_guild_translations(guild_id)
-            if not await is_admin(interaction):
-                return await interaction.followup.send(t("ERR_ADMIN_ONLY", guild_id=guild_id), ephemeral=True)
-            
-            from cogs.message_wizard import MessageWizardView
-            view = MessageWizardView(self.bot, interaction.guild.id)
-            await view.prepare(interaction)
-            await interaction.followup.send(view=view, ephemeral=True)
-        except Exception as e:
-            log.error(f"Error in admin_messages: {e}")
-            await interaction.followup.send(f"{t('ERR_CRITICAL_WIZARD', guild_id=interaction.guild_id)}: `{e}`", ephemeral=True)
-
-    @app_commands.command(name="emojis", description="Manage customized emoji sets for this server")
-    async def manage_emojis(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        guild_id = interaction.guild_id
-        try:
-            await load_guild_translations(guild_id)
-            if not await is_admin(interaction):
-                return await interaction.followup.send(t("ERR_ADMIN_ONLY", guild_id=guild_id), ephemeral=True)
-            
-            from cogs.emoji_wizard import EmojiWizardView
-            view = EmojiWizardView(self.bot, interaction.guild_id)
-            await view.refresh_message(interaction)
-        except Exception as e:
-            await interaction.followup.send(f"{t('ERR_CRITICAL_EMOJI', guild_id=interaction.guild_id)}: `{e}`", ephemeral=True)
-
     @app_commands.command(name="reset", description="WIPE ALL DATA for this server")
     async def reset(self, interaction: discord.Interaction):
         guild_id = interaction.guild_id
@@ -107,22 +94,26 @@ class AdminCommands(commands.GroupCog, name="admin"):
         if not await is_admin(interaction):
             return await interaction.response.send_message(t("ERR_ADMIN_ONLY", guild_id=guild_id), ephemeral=True)
 
-        view = ui.View()
+        target_gid_int = int(guild_id) if guild_id else 0
+        view = ConfirmResetView(author_id=interaction.user.id, guild_id=target_gid_int)
         confirm_btn = make_button(label=t("BTN_RESET_CONFIRM", guild_id=guild_id), style=discord.ButtonStyle.danger)
         cancel_btn = make_button(label=t("BTN_CANCEL", guild_id=guild_id), style=discord.ButtonStyle.secondary)
 
         async def confirm_callback(it: discord.Interaction):
+            target_gid = it.guild.id if it.guild else target_gid_int
             try:
-                await database.reset_guild_data(it.guild.id)
-                await it.response.send_message(t("MSG_RESET_SUCCESS", guild_id=it.guild_id), ephemeral=True)
+                await database.reset_guild_data(target_gid)
+                invalidate_guild_cache(target_gid)
+                await it.response.send_message(t("MSG_RESET_SUCCESS", guild_id=it.guild_id or guild_id), ephemeral=True)
             except Exception as e:
-                await it.response.send_message(f"{t('ERR_RESET_FAILED', guild_id=it.guild_id)}: `{e}`", ephemeral=True)
+                await it.response.send_message(f"{t('ERR_RESET_FAILED', guild_id=it.guild_id or guild_id)}: `{e}`", ephemeral=True)
 
         async def cancel_callback(it: discord.Interaction):
-            await it.response.send_message(t("MSG_RESET_CANCELLED", guild_id=it.guild_id), ephemeral=True)
+            await it.response.send_message(t("MSG_RESET_CANCELLED", guild_id=it.guild_id or guild_id), ephemeral=True)
 
         confirm_btn.callback = confirm_callback
         cancel_btn.callback = cancel_callback
         view.add_item(confirm_btn)
         view.add_item(cancel_btn)
         await interaction.response.send_message(t("MSG_RESET_WARNING", guild_id=guild_id), view=view, ephemeral=True)
+

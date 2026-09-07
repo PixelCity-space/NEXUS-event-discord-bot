@@ -1,5 +1,4 @@
 import uuid
-import json
 from typing import Any, Optional
 import discord
 import database
@@ -13,6 +12,7 @@ from utils.i18n import t
 from utils.templates import ICON_SET_TEMPLATES
 from utils.emoji_utils import to_emoji, make_select_option
 from utils.discord_utils import resolve_channel
+from utils.extra_data import parse_extra_data
 
 class WizardState:
     """Manages event wizard form state, default settings, and draft persistence."""
@@ -106,18 +106,10 @@ class WizardState:
                 self.data["reminder_offsets"] = ro_list if rt != "none" else []
                 self.data["reminder_messages"] = []
         if not (self.data.get("reminder_message") or "").strip() and self.data.get("extra_data"):
-            try:
-                ed = (
-                    json.loads(self.data["extra_data"])
-                    if isinstance(self.data["extra_data"], str)
-                    else self.data["extra_data"]
-                )
-                if isinstance(ed, dict):
-                    self.data["reminder_message"] = (
-                        (ed.get("custom_reminder_msg") or "").strip() or None
-                    )
-            except Exception:
-                pass
+            ed = parse_extra_data(self.data["extra_data"])
+            self.data["reminder_message"] = (
+                (ed.custom_reminder_msg or "").strip() or None
+            )
         if "color" not in self.data:
             self.data["color"] = await database.get_guild_setting(self.guild_id, "default_color", default="0x40C4FF")
         self.data["rsvp_allowed_role_ids"] = database.normalize_rsvp_allowed_role_ids_value(
@@ -159,7 +151,7 @@ class WizardState:
                 if ch_id:
                     self.data["channel_id"] = ch_id
                 else:
-                    self.chan_warning = t("MSG_CHANNEL_NOT_FOUND", guild_id=self.guild_id).format(name=raw_ch)
+                    self.chan_warning = t("MSG_CHANNEL_NOT_FOUND", guild_id=self.guild_id, name=raw_ch)
 
         if "use_waiting_list" not in self.data:
             val = await database.get_guild_setting(self.guild_id, "default_use_waiting_list", default="false")

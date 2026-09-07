@@ -1,19 +1,22 @@
 import time
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import discord
+import pytest
+
 from services.attendance_service import (
-    get_eligible_attendance_participants,
     calculate_attendance_stats,
-    toggle_user_attendance,
+    get_eligible_attendance_participants,
     resolve_member_names_batch,
+    toggle_user_attendance,
 )
 from services.export_service import (
-    generate_events_csv,
-    generate_rsvps_csv,
     create_csv_discord_file,
+    generate_events_csv,
     generate_future_events_ics_file,
+    generate_rsvps_csv,
 )
+
 
 @pytest.mark.asyncio
 async def test_integration_end_to_end_attendance_audit_flow():
@@ -126,6 +129,37 @@ async def test_integration_attendance_autocomplete_to_member_resolution():
     )
     assert resolved["99"] == "AlreadyCachedUser"
     assert resolved["101"] == "DragonSlayer"
+
+
+@pytest.mark.asyncio
+async def test_integration_batch_member_resolution_throttled():
+    """Integration: Batch member name resolution fetches uncached members with semaphore throttling."""
+    bot = MagicMock()
+    guild = MagicMock()
+    guild.get_member.return_value = None  # None cached locally
+
+    async def mock_fetch_member(uid):
+        m = MagicMock()
+        m.display_name = f"Member_{uid}"
+        return m
+
+    guild.fetch_member = AsyncMock(side_effect=mock_fetch_member)
+    bot.get_guild.return_value = guild
+
+    user_ids = [str(i) for i in range(200, 210)]
+    name_cache = {}
+    resolved = await resolve_member_names_batch(
+        bot=bot,
+        guild_id="777",
+        user_ids=user_ids,
+        name_cache=name_cache,
+    )
+
+    assert len(resolved) == 10
+    assert resolved["200"] == "Member_200"
+    assert resolved["209"] == "Member_209"
+    assert guild.fetch_member.call_count == 10
+
 
 def test_integration_reliability_and_export_statistics():
     """Integration: Calculating reliability rates across multiple user records."""

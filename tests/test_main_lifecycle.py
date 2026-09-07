@@ -1,10 +1,12 @@
 import os
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import discord
+import pytest
 from discord import app_commands
-import main
+
 from main import EventBot
+
 
 @pytest.fixture
 def bot_instance():
@@ -25,8 +27,8 @@ async def test_main_init_database_success_and_seeding(bot_instance):
     mock_pool = MagicMock()
     bot_instance.master_guild_ids = [123456]
     with patch.dict(os.environ, {"DATABASE_URL": "postgresql://test:test@localhost/test"}), \
-         patch("asyncpg.create_pool", new_callable=AsyncMock) as mock_create_pool, \
-         patch("database.set_pool", new_callable=AsyncMock) as mock_set_pool, \
+         patch("database.create_pool", new_callable=AsyncMock) as mock_create_pool, \
+         patch("database.set_pool", new_callable=AsyncMock), \
          patch("database.init_db", new_callable=AsyncMock) as mock_init_db, \
          patch("main.load_guild_translations", new_callable=AsyncMock) as mock_trans, \
          patch("database.get_all_global_emoji_sets", new_callable=AsyncMock) as mock_get_sets, \
@@ -44,7 +46,7 @@ async def test_main_init_database_success_and_seeding(bot_instance):
 @pytest.mark.asyncio
 async def test_main_init_database_exception_handling(bot_instance):
     with patch.dict(os.environ, {"DATABASE_URL": "postgresql://invalid"}), \
-         patch("asyncpg.create_pool", side_effect=Exception("Connection refused")):
+         patch("database.create_pool", side_effect=Exception("Connection refused")):
         with pytest.raises(RuntimeError, match="Failed to initialize database"):
             await bot_instance._init_database()
 
@@ -82,7 +84,7 @@ async def test_main_load_persistent_views(bot_instance):
 
     with patch("main.load_custom_sets", new_callable=AsyncMock) as mock_load_sets, \
          patch("database.get_active_events", new_callable=AsyncMock) as mock_get_evs, \
-         patch("main.DynamicEventView.prepare", new_callable=AsyncMock) as mock_prep:
+         patch("main.DynamicEventView.prepare", new_callable=AsyncMock):
 
         mock_get_evs.return_value = active_events
 
@@ -142,7 +144,7 @@ async def test_main_setup_hook_and_lifecycle(bot_instance):
     bot_instance._register_error_handler = MagicMock()
 
     with patch("main.start_presence_task") as mock_presence, \
-         patch("main.set_log_level") as mock_set_log:
+         patch("main.set_log_level"):
 
         await bot_instance.setup_hook()
         bot_instance._init_database.assert_called_once()

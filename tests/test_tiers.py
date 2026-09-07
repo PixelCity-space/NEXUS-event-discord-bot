@@ -1,12 +1,15 @@
+from unittest.mock import PropertyMock, patch
+
 import pytest
-from unittest.mock import patch, PropertyMock
+
 from utils.config import Config
 from utils.tiers import (
     SubscriptionTier,
     get_guild_tier,
-    is_premium,
     is_master_guild,
+    is_premium,
 )
+
 
 @pytest.mark.asyncio
 async def test_get_guild_tier_master():

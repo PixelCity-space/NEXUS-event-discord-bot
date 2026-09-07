@@ -1,10 +1,9 @@
 import time
-import json
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from utils.emoji_utils import resolve_placeholders
 from utils.i18n import t
-from utils.logger import log
+from utils.extra_data import parse_extra_data
 from utils.lobby_utils import effective_lobby_capacity, lobby_is_full
 
 @dataclass
@@ -27,19 +26,11 @@ class ParticipantFormatter:
 
     @staticmethod
     def extract_role_limits(event_conf: dict, db_event: Optional[dict] = None) -> Dict[str, int]:
-        """Extracts and parses role limits from extra_data JSON."""
+        """Extracts and parses role limits from extra_data JSON using EventExtraData DTO."""
         extra_data = event_conf.get("extra_data")
         if not extra_data and db_event:
             extra_data = db_event.get("extra_data")
-        if extra_data:
-            try:
-                if isinstance(extra_data, str):
-                    return json.loads(extra_data).get("role_limits", {})
-                elif isinstance(extra_data, dict):
-                    return extra_data.get("role_limits", {})
-            except Exception as e:
-                log.debug("[ParticipantFormatter] extract_role_limits error: %s", e)
-        return {}
+        return parse_extra_data(extra_data).role_limits
 
     @classmethod
     def format_roster(

@@ -1,5 +1,7 @@
 import logging
-from utils.logger import GuildLoggerAdapter, set_log_level, log
+
+from utils.logger import GuildLoggerAdapter, log, set_log_level
+
 
 def test_guild_logger_adapter_global_prefix():
     """Test log prefix defaults to [Global] when guild_id is not provided."""

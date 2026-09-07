@@ -106,6 +106,25 @@ class DatabaseManager:
 db_manager = DatabaseManager()
 
 
+async def create_pool(
+    dsn: str,
+    min_size: int = 5,
+    max_size: int = 20,
+    command_timeout: float = 30.0,
+    max_inactive_connection_lifetime: float = 300.0,
+    timeout: float = 10.0,
+) -> asyncpg.Pool:
+    """Creates and configures a tuned asyncpg connection pool."""
+    return await asyncpg.create_pool(
+        dsn,
+        min_size=min_size,
+        max_size=max_size,
+        command_timeout=command_timeout,
+        max_inactive_connection_lifetime=max_inactive_connection_lifetime,
+        timeout=timeout,
+    )
+
+
 async def set_pool(pool: asyncpg.Pool) -> None:
     """Assigns the global database connection pool."""
     db_manager.set_pool(pool)

@@ -7,6 +7,9 @@ from utils.auth import is_master
 from utils.i18n import t
 from utils.logger import log
 from utils.config import config
+from utils.templates import ICON_SET_TEMPLATES, get_template_data
+from cogs.emoji_wizard import EmojiWizardView
+from cogs.event_ui import load_custom_sets
 from .views.presence_menu import MasterPresenceView
 
 @app_commands.check(is_master)
@@ -62,7 +65,6 @@ class MasterCommands(commands.GroupCog, name="master"):
     async def global_emoji_sets(self, interaction: discord.Interaction):
         """Manage system-wide global emoji sets used by all guilds."""
         try:
-            from cogs.emoji_wizard import EmojiWizardView
             view = EmojiWizardView(self.bot, None, is_global=True)
             await view.refresh_message(interaction)
         except Exception as e:
@@ -79,9 +81,6 @@ class MasterCommands(commands.GroupCog, name="master"):
         await interaction.response.defer(ephemeral=True)
         
         try:
-            from utils.templates import ICON_SET_TEMPLATES, get_template_data
-            from cogs.event_ui import load_custom_sets
-            
             await database.clear_global_emoji_sets()
             
             count = 0

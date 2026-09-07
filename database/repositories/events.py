@@ -1,7 +1,7 @@
 from typing import Optional, Any
 import re
-import json
 import time
+from utils.extra_data import serialize_extra_data
 from ..connection import get_pool, DEFAULT_TIMEZONE
 from .reminders import (
     normalize_reminders_for_store,
@@ -86,7 +86,7 @@ async def create_active_event(
     recurrence_limit = int(data.get("recurrence_limit") or 0)
     recurrence_count = int(data.get("recurrence_count") or 0)
     icon_set = str(data.get("icon_set") or "standard")
-    extra_data = data.get("extra_data")
+    extra_data = serialize_extra_data(data.get("extra_data")) if data.get("extra_data") is not None else None
 
     temp_role_id = int(data.get("temp_role_id") or 0)
     use_temp_role = bool(data.get("use_temp_role", False))
@@ -179,7 +179,7 @@ async def update_active_event(event_id: str, data: dict[str, Any]) -> None:
     recurrence_limit = int(data.get("recurrence_limit") or 0)
     recurrence_count = int(data.get("recurrence_count") or 0)
     icon_set = str(data.get("icon_set") or "standard")
-    extra_data = data.get("extra_data")
+    extra_data = serialize_extra_data(data.get("extra_data")) if data.get("extra_data") is not None else None
 
     temp_role_id = int(data.get("temp_role_id") or 0)
     use_temp_role = bool(data.get("use_temp_role", False))
@@ -320,7 +320,7 @@ async def set_lobby_start_time(event_id: str, start_ts: Optional[float | int]) -
 async def update_active_events_metadata_bulk(event_ids: list[str], data: dict[str, Any]) -> None:
     """Updates metadata (like extra_data) for multiple events during bulk edit."""
     pool = await get_pool()
-    extra_json = json.dumps(data.get("extra_data") or {}) if isinstance(data.get("extra_data"), dict) else data.get("extra_data")
+    extra_json = serialize_extra_data(data.get("extra_data")) if data.get("extra_data") is not None else None
     rsvp_allowed_role_ids = normalize_rsvp_allowed_role_ids_value(data.get("rsvp_allowed_role_ids"))
     image_urls = normalize_image_urls_for_store(data.get("image_urls"))
 

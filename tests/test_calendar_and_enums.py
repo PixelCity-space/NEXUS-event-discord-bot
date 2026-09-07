@@ -1,13 +1,13 @@
-import datetime
 from utils.calendar_utils import (
     format_ts_utc,
+    generate_ics_batch,
     get_google_calendar_url,
     get_outlook_calendar_url,
     get_yahoo_calendar_url,
-    generate_ics_batch,
 )
-from utils.enums import EventStatus, AttendanceStatus, RecurrenceType
+from utils.enums import EventStatus
 from utils.tiers import SubscriptionTier
+
 
 def test_format_ts_utc():
     """Test converting timestamp to standard UTC format (YYYYMMDDTHHMMSSZ)."""

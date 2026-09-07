@@ -1,21 +1,24 @@
 import time
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import discord
+import pytest
+
+from cogs.event_wizard.actions.preview import process_save_preview
+from cogs.event_wizard.actions.publisher import process_publish
+from cogs.event_wizard.sections import (
+    build_actions_section,
+    build_emoji_set_section,
+    build_header_section,
+    build_notifications_section,
+    build_recurrence_section,
+    build_settings_section,
+    build_steps_row,
+)
 from cogs.event_wizard.state import WizardState
 from cogs.event_wizard.views.start_view import WizardStartView
 from cogs.event_wizard.views.wizard_view import EventWizardView
-from cogs.event_wizard.actions.publisher import process_publish
-from cogs.event_wizard.actions.preview import process_save_preview
-from cogs.event_wizard.sections import (
-    build_header_section,
-    build_steps_row,
-    build_recurrence_section,
-    build_settings_section,
-    build_notifications_section,
-    build_emoji_set_section,
-    build_actions_section,
-)
+
 
 @pytest.fixture
 def mock_bot():
@@ -161,7 +164,7 @@ async def test_process_publish_single_event(mock_bot, mock_interaction):
          patch("database.create_active_event", new_callable=AsyncMock) as mock_create_ev, \
          patch("database.set_event_message", new_callable=AsyncMock) as mock_set_msg, \
          patch("database.delete_draft", new_callable=AsyncMock) as mock_del_draft, \
-         patch("cogs.event_ui.DynamicEventView.prepare", new_callable=AsyncMock) as mock_prep:
+         patch("cogs.event_ui.DynamicEventView.prepare", new_callable=AsyncMock):
 
         mock_get_ev.return_value = None
         await process_publish(wiz_view, mock_interaction)
@@ -185,6 +188,6 @@ async def test_process_preview(mock_bot, mock_interaction):
     )
     wiz_view.steps_completed["step1"] = True
 
-    with patch("cogs.event_ui.DynamicEventView.prepare", new_callable=AsyncMock) as mock_prep:
+    with patch("cogs.event_ui.DynamicEventView.prepare", new_callable=AsyncMock):
         await process_save_preview(wiz_view, mock_interaction)
         mock_interaction.followup.send.assert_called()

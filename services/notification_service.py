@@ -142,24 +142,30 @@ async def send_event_alert(
         except Exception as e:
             log.warning("[NotificationService] Failed to send channel alert to %s: %s", channel_id, e)
 
-    # 2. Send DM notifications
+    # 2. Send DM notifications concurrently with controlled rate limiting
     if send_dm and target_user_ids:
         active_dm_embed = dm_embed or embed
         active_dm_content = dm_content or content
+        dm_sem = asyncio.Semaphore(5)
 
-        for uid in target_user_ids:
-            try:
-                user = bot.get_user(uid)
-                if not user:
-                    user = await bot.fetch_user(uid)
-                if user:
-                    await user.send(content=active_dm_content, embed=active_dm_embed)
-                    stats["dms_sent"] += 1
-                    # Small delay to prevent Discord API rate limiting on large DM batches
-                    if len(target_user_ids) > 10:
-                        await asyncio.sleep(0.05)
-            except Exception as e:
+        async def _send_single_dm(uid: int) -> bool:
+            async with dm_sem:
+                try:
+                    user = bot.get_user(uid)
+                    if not user:
+                        user = await bot.fetch_user(uid)
+                    if user:
+                        await user.send(content=active_dm_content, embed=active_dm_embed)
+                        return True
+                except Exception as e:
+                    log.debug("[NotificationService] Could not send DM to %s: %s", uid, e)
+                return False
+
+        results = await asyncio.gather(*[_send_single_dm(uid) for uid in target_user_ids], return_exceptions=True)
+        for res in results:
+            if res is True:
+                stats["dms_sent"] += 1
+            else:
                 stats["dms_failed"] += 1
-                log.debug("[NotificationService] Could not send DM to %s: %s", uid, e)
 
     return stats

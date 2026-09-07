@@ -10,14 +10,15 @@ from ..ui_builder import (
     create_setting_select,
 )
 
+from .registry import register_view
+
+@register_view("general")
 class GeneralSetupView(BaseSetupView):
     """General setup view for bot language, template language, and admin permissions."""
 
     async def prepare(self, interaction: discord.Interaction):
         """Asynchronously build UI components and bind callbacks."""
         self.clear_items()
-        
-        from .main_menu import ServerSetupView
 
         # 1. Admin Roles & Channels Modal Buttons
         roles_btn = create_setting_modal_button(
@@ -40,7 +41,7 @@ class GeneralSetupView(BaseSetupView):
 
         back_btn = make_button(label=t("BTN_BACK", guild_id=self.guild_id), style=discord.ButtonStyle.secondary)
         async def back_cb(it: discord.Interaction):
-            await self.navigate_to(ServerSetupView, it)
+            await self.navigate_to("main", it)
         back_btn.callback = back_cb
 
         # 2. Bot Language Select

@@ -24,3 +24,29 @@ def slugify(text: Any, separator: str = "_") -> str:
 
     # 5. Remove leading and trailing separators
     return text_str.strip(separator)
+
+
+def safe_format(template_str: Any, **kwargs: Any) -> str:
+    """
+    Safely substitutes placeholders in a template string (e.g. {title}, {user_id}) with provided kwargs.
+    - Prevents KeyError when unknown or missing keys are present (keeps unknown placeholders intact).
+    - Prevents ValueError on unescaped single braces or malformed syntax.
+    - Prevents Python object introspection attacks (e.g. {title.__class__} is not matched or evaluated).
+    """
+    if template_str is None:
+        return ""
+    if not isinstance(template_str, str):
+        template_str = str(template_str)
+
+    if not template_str or not kwargs:
+        return template_str
+
+    def _replace(match: re.Match) -> str:
+        key = match.group(1)
+        if key in kwargs:
+            val = kwargs[key]
+            return str(val) if val is not None else ""
+        return match.group(0)
+
+    # Matches only alphanumeric identifier keys: {identifier_name}
+    return re.sub(r"\{([a-zA-Z0-9_]+)\}", _replace, template_str)

@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS active_events (
 
 -- 2. RSVPs and Attendance
 CREATE TABLE IF NOT EXISTS rsvps (
-    event_id TEXT NOT NULL,
+    event_id TEXT NOT NULL REFERENCES active_events(event_id) ON DELETE CASCADE,
     user_id BIGINT NOT NULL,
     status TEXT,
     joined_at DOUBLE PRECISION,
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS global_settings (
 
 -- 8. Event Reminders (Multi-slot)
 CREATE TABLE IF NOT EXISTS event_reminders (
-    event_id TEXT NOT NULL,
+    event_id TEXT NOT NULL REFERENCES active_events(event_id) ON DELETE CASCADE,
     slot_idx SMALLINT NOT NULL,
     offset_str TEXT NOT NULL,
     method TEXT,
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS event_reminders (
 CREATE TABLE IF NOT EXISTS global_emoji_sets (
     set_id TEXT PRIMARY KEY,
     name TEXT,
-    data TEXT
+    data JSONB
 );
 
 -- Performance Indexes

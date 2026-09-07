@@ -1,7 +1,8 @@
 from database.repositories.events import (
-    normalize_rsvp_allowed_role_ids_value,
     normalize_image_urls_for_store,
+    normalize_rsvp_allowed_role_ids_value,
 )
+
 
 def test_normalize_rsvp_allowed_role_ids_value_valid():
     """Test extracting and deduplicating comma-separated numeric role IDs."""

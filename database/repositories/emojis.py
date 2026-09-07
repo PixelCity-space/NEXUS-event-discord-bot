@@ -37,16 +37,22 @@ async def delete_emoji_set(guild_id: str, set_id: str) -> None:
 async def save_global_emoji_set(set_id: str, name: str, data: Any) -> None:
     """Upsert a global emoji set."""
     if isinstance(data, (dict, list)):
-        data_str = json.dumps(data)
+        data_json = json.dumps(data)
+    elif isinstance(data, str):
+        try:
+            json.loads(data)
+            data_json = data
+        except Exception:
+            data_json = json.dumps(data)
     else:
-        data_str = str(data)
+        data_json = json.dumps(data)
     
     pool = await get_pool()
     await pool.execute("""
         INSERT INTO global_emoji_sets (set_id, name, data)
         VALUES ($1, $2, $3)
         ON CONFLICT (set_id) DO UPDATE SET name = EXCLUDED.name, data = EXCLUDED.data
-    """, set_id, name, data_str)
+    """, set_id, name, data_json)
 
 async def get_all_global_emoji_sets() -> list[Any]:
     """Get all global emoji sets."""

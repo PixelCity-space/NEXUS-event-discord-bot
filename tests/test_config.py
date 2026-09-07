@@ -1,5 +1,7 @@
 import os
+
 from utils.config import Config
+
 
 def test_config_get_and_defaults():
     """Test Config.get returns default value for missing keys."""

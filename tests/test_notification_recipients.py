@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
+
 from services.notification_service import resolve_target_recipients
+
 
 def _sample_active_set():
     return {

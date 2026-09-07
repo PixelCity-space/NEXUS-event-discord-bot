@@ -2,11 +2,23 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import database
-from utils.auth import is_admin, is_master
+from utils.auth import is_admin, is_master, is_owner
 from utils.i18n import t, load_guild_translations
 from utils.logger import log
 from utils.config import config
 from utils.enums import EventStatus
+from services.event_service import (
+    resolve_target_events,
+    search_events_autocomplete,
+    remove_events_with_cleanup,
+)
+from services.export_service import (
+    generate_events_csv,
+    generate_rsvps_csv,
+    create_csv_discord_file,
+    generate_future_events_ics_file,
+)
+from cogs.event_wizard import WizardStartView, EventWizardView
 from ..helpers import handle_status_change
 from ..views.my_events import MyEventsView
 from ..views.history import EventHistoryView
@@ -24,7 +36,6 @@ class EventCommands(commands.Cog, name="EventCommands"):
 
     @event_group.command(name="create", description="Start the interactive event creation wizard")
     async def create_event(self, interaction: discord.Interaction):
-        from cogs.event_wizard import WizardStartView
         await interaction.response.defer(ephemeral=True)
         guild_id = interaction.guild_id
         await load_guild_translations(guild_id)
@@ -42,7 +53,6 @@ class EventCommands(commands.Cog, name="EventCommands"):
 
     @event_group.command(name="lobby", description="Create a fill-to-start lobby event (no fixed time until full)")
     async def create_lobby_event(self, interaction: discord.Interaction):
-        from cogs.event_wizard import EventWizardView
         await interaction.response.defer(ephemeral=True)
         guild_id = interaction.guild_id
         await load_guild_translations(guild_id)
@@ -71,7 +81,6 @@ class EventCommands(commands.Cog, name="EventCommands"):
         occurrence="Optional: which occurrence number of a series to edit (1, 2, 3...)"
     )
     async def edit_event(self, interaction: discord.Interaction, event_id: str, occurrence: int = None):
-        from cogs.event_wizard import EventWizardView
         await interaction.response.defer(ephemeral=True)
         guild_id = interaction.guild_id
         await load_guild_translations(guild_id)
@@ -80,7 +89,6 @@ class EventCommands(commands.Cog, name="EventCommands"):
             await interaction.followup.send(t("ERR_ADMIN_ONLY", guild_id=guild_id), ephemeral=True)
             return
             
-        from services.event_service import resolve_target_events
         db_event, matched_events, bulk_ids = await resolve_target_events(event_id, interaction.guild_id, occurrence)
 
         if not db_event:
@@ -111,7 +119,6 @@ class EventCommands(commands.Cog, name="EventCommands"):
 
     @edit_event.autocomplete("event_id")
     async def edit_event_autocomplete(self, interaction: discord.Interaction, current: str):
-        from services.event_service import search_events_autocomplete
         return await search_events_autocomplete(interaction.guild_id, current)
 
     @event_group.command(name="list", description="Show all active events")
@@ -156,11 +163,6 @@ class EventCommands(commands.Cog, name="EventCommands"):
             return await interaction.followup.send(t("ERR_ADMIN_ONLY", guild_id=guild_id), ephemeral=True)
             
         try:
-            from services.export_service import (
-                generate_events_csv,
-                generate_rsvps_csv,
-                create_csv_discord_file,
-            )
             events = await database.get_guild_events_export(guild_id)
             rsvps = await database.get_guild_rsvps_export(guild_id)
             
@@ -186,7 +188,6 @@ class EventCommands(commands.Cog, name="EventCommands"):
         await load_guild_translations(guild_id)
         
         try:
-            from services.export_service import generate_future_events_ics_file
             events = await database.get_active_events(guild_id)
             if not events:
                 return await interaction.followup.send(t("ERR_NO_ACTIVE_EVENTS", guild_id=guild_id), ephemeral=True)
@@ -272,7 +273,6 @@ class EventCommands(commands.Cog, name="EventCommands"):
         
         log.info(f"[Remove] Looking for event_id={event_id!r} guild_id={interaction.guild_id!r}")
         
-        from services.event_service import resolve_target_events, remove_events_with_cleanup
         _, target_events, _ = await resolve_target_events(event_id, interaction.guild_id)
 
         if not target_events:
@@ -290,8 +290,12 @@ class EventCommands(commands.Cog, name="EventCommands"):
     @commands.command(name="sync", aliases=["sync_nexus"])
     @commands.guild_only()
     async def sync_prefix(self, ctx: commands.Context, spec: str | None = None):
-        if not await is_master(ctx):
-            return await ctx.send(t("ERR_ADMIN_ONLY", guild_id=ctx.guild.id))
+        if spec in ("global", "copy"):
+            if not await is_owner(ctx):
+                return await ctx.send(t("ERR_ADMIN_ONLY", guild_id=ctx.guild.id))
+        else:
+            if not (await is_master(ctx) or await is_admin(ctx)):
+                return await ctx.send(t("ERR_ADMIN_ONLY", guild_id=ctx.guild.id))
         
         await ctx.send(t("SYNC_START", guild_id=ctx.guild.id))
         try:
@@ -311,7 +315,8 @@ class EventCommands(commands.Cog, name="EventCommands"):
     @commands.command(name="clear_commands", aliases=["clear_commands_nexus"])
     @commands.guild_only()
     async def clear_commands_prefix(self, ctx: commands.Context):
-        if not await is_master(ctx):
+        # Destructive global action: strictly restricted to Bot Owner
+        if not await is_owner(ctx):
             return await ctx.send(t("ERR_ADMIN_ONLY", guild_id=ctx.guild.id))
         
         await ctx.send(t("SYNC_CLEAR_START", guild_id=ctx.guild.id))

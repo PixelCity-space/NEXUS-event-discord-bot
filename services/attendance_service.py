@@ -76,10 +76,19 @@ async def resolve_member_names_batch(
     if not guild:
         return name_cache
 
+    fetch_sem = asyncio.Semaphore(3)
+
     async def fetch(uid: str):
         try:
-            mem = guild.get_member(int(uid)) or await guild.fetch_member(int(uid))
-            return uid, mem.display_name
+            # Fast path: check local Discord.py guild member cache without holding semaphore
+            mem = guild.get_member(int(uid))
+            if mem:
+                return uid, mem.display_name
+
+            # Slow path: fetch from Discord REST API with rate-limiting semaphore
+            async with fetch_sem:
+                mem = await guild.fetch_member(int(uid))
+                return uid, mem.display_name
         except Exception:
             return uid, t("LBL_USER_DEFAULT", guild_id=str(gid_int)).replace("{uid}", str(uid))
 

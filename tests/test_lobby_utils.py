@@ -1,10 +1,11 @@
 from utils.lobby_utils import (
-    positive_status_ids,
-    effective_lobby_capacity,
-    role_limits_from_extra,
     count_positive_rsvps,
+    effective_lobby_capacity,
     lobby_is_full,
+    positive_status_ids,
+    role_limits_from_extra,
 )
+
 
 def test_positive_status_ids_from_list():
     """Test extracting positive status IDs when explicitly given in active_set."""

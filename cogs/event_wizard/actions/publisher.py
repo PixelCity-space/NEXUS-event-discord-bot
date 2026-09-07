@@ -1,20 +1,18 @@
 import time
-import json
 import datetime
 import discord
 import database
 from utils.emojis import PING
 from utils.i18n import t
 from utils.logger import log
+from utils.offset_parse import parse_offset
+from utils.lobby_utils import effective_lobby_capacity, role_limits_from_extra
+from utils.extra_data import parse_extra_data
+from cogs.event_ui import DynamicEventView, get_active_set
 
 async def process_publish(wizard_view, interaction: discord.Interaction):
     """Handles the final publish and persistence of an event to Discord and Database."""
     await interaction.response.defer(ephemeral=True)
-    
-    from cogs.event_ui import DynamicEventView, get_active_set
-    from utils.offset_parse import parse_offset
-    from utils.lobby_utils import effective_lobby_capacity, role_limits_from_extra
-
     event_id = wizard_view.data["event_id"]
 
     try:
@@ -147,11 +145,9 @@ async def process_publish(wizard_view, interaction: discord.Interaction):
                     thread = await msg.create_thread(name=thread_name[:100])
                     
                     # Store thread_id in extra_data
-                    extra_data = wizard_view.data.get("extra_data", {})
-                    if isinstance(extra_data, str):
-                        extra_data = json.loads(extra_data)
-                    extra_data["thread_id"] = thread.id
-                    wizard_view.data["extra_data"] = json.dumps(extra_data)
+                    extra_dto = parse_extra_data(wizard_view.data.get("extra_data"))
+                    extra_dto.thread_id = thread.id
+                    wizard_view.data["extra_data"] = extra_dto.to_json()
                     await database.update_active_event(event_id, wizard_view.data)
                     
                     log.info(f"[Wizard] Created thread '{thread_name}' for event {event_id}")

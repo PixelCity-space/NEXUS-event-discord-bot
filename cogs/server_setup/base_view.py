@@ -15,8 +15,15 @@ class BaseSetupView(ui.LayoutView):
         """Asynchronously build UI components. Must be implemented by subclasses."""
         raise NotImplementedError("Subclasses must implement the prepare() method.")
 
-    async def navigate_to(self, view_cls, interaction: discord.Interaction, **kwargs):
-        """Convenience helper to transition smoothly to another setup view."""
+    async def navigate_to(self, view_target, interaction: discord.Interaction, **kwargs):
+        """Convenience helper to transition smoothly to another setup view (by class or registry name)."""
+        if isinstance(view_target, str):
+            from .views.registry import get_view
+            view_cls = get_view(view_target)
+            if not view_cls:
+                raise ValueError(f"Unknown setup view target: {view_target}")
+        else:
+            view_cls = view_target
         target_view = view_cls(self.bot, self.guild_id, **kwargs)
         await target_view.refresh_message(interaction)
 

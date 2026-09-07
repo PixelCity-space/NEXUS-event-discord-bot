@@ -1,5 +1,7 @@
 import discord
-from utils.emoji_utils import make_select_option, make_button
+
+from utils.emoji_utils import make_button, make_select_option
+
 
 def test_make_select_option_with_custom_emoji():
     """Test creating a discord.SelectOption with auto-extracted custom emoji."""

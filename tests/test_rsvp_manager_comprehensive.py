@@ -1,11 +1,18 @@
 import time
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import discord
-from utils.enums import EventStatus
-from cogs.event_ui.rsvp_manager import handle_rsvp, try_promote_waiting, _rsvp_cooldowns
-from cogs.event_ui.notifications import send_status_notification, notify_promotion, send_lobby_fill_notifications
+import pytest
+
 from cogs.event_ui.lobby import process_lobby_transition
+from cogs.event_ui.notifications import (
+    notify_promotion,
+    send_lobby_fill_notifications,
+    send_status_notification,
+)
+from cogs.event_ui.rsvp_manager import _rsvp_cooldowns, handle_rsvp, try_promote_waiting
+from utils.enums import EventStatus
+
 
 @pytest.fixture(autouse=True)
 def clear_cooldowns():
@@ -141,14 +148,19 @@ async def test_handle_rsvp_success_and_temp_role(mock_view, mock_interaction):
     mock_interaction.user.remove_roles = AsyncMock()
 
     with patch("database.get_active_event", new_callable=AsyncMock) as mock_get_ev, \
-         patch("database.get_rsvps_with_time", new_callable=AsyncMock) as mock_get_rsvps, \
-         patch("database.update_rsvp", new_callable=AsyncMock) as mock_update_rsvp:
+         patch("database.join_or_update_rsvp_atomic", new_callable=AsyncMock) as mock_atomic:
 
         mock_get_ev.return_value = db_event
-        mock_get_rsvps.return_value = []
+        mock_atomic.return_value = {
+            "target_status": "accepted",
+            "old_status": None,
+            "is_full": False,
+            "is_waitlist": False,
+            "error": None,
+        }
 
         await handle_rsvp(mock_view, mock_interaction, "accepted")
-        mock_update_rsvp.assert_called_once_with("EVT-100", mock_interaction.user.id, "accepted")
+        mock_atomic.assert_called_once()
         mock_interaction.user.add_roles.assert_called_once_with(mock_role, reason="RSVP positive: EVT-100")
 
 @pytest.mark.asyncio
@@ -161,16 +173,18 @@ async def test_handle_rsvp_role_limit_and_waitlist_full(mock_view, mock_interact
         "extra_data": '{"role_limits": {"accepted": 1, "waiting_list_limit": 1}}',
     }
     mock_view.event_conf = dict(db_event)
-    existing_rsvps = [
-        {"user_id": 111, "status": "accepted", "joined_at": time.time()},
-        {"user_id": 222, "status": "wait_accepted", "joined_at": time.time()},
-    ]
 
     with patch("database.get_active_event", new_callable=AsyncMock) as mock_get_ev, \
-         patch("database.get_rsvps_with_time", new_callable=AsyncMock) as mock_get_rsvps:
+         patch("database.join_or_update_rsvp_atomic", new_callable=AsyncMock) as mock_atomic:
 
         mock_get_ev.return_value = db_event
-        mock_get_rsvps.return_value = existing_rsvps
+        mock_atomic.return_value = {
+            "target_status": None,
+            "old_status": None,
+            "is_full": True,
+            "is_waitlist": False,
+            "error": "waitlist_full",
+        }
 
         await handle_rsvp(mock_view, mock_interaction, "accepted")
         mock_interaction.response.send_message.assert_called_once()
@@ -185,17 +199,21 @@ async def test_handle_rsvp_overflow_to_waitlist(mock_view, mock_interaction):
         "use_waiting_list": True,
     }
     mock_view.event_conf = dict(db_event)
-    existing_rsvps = [{"user_id": 111, "status": "accepted", "joined_at": time.time()}]
 
     with patch("database.get_active_event", new_callable=AsyncMock) as mock_get_ev, \
-         patch("database.get_rsvps_with_time", new_callable=AsyncMock) as mock_get_rsvps, \
-         patch("database.update_rsvp", new_callable=AsyncMock) as mock_update_rsvp:
+         patch("database.join_or_update_rsvp_atomic", new_callable=AsyncMock) as mock_atomic:
 
         mock_get_ev.return_value = db_event
-        mock_get_rsvps.return_value = existing_rsvps
+        mock_atomic.return_value = {
+            "target_status": "wait_accepted",
+            "old_status": None,
+            "is_full": False,
+            "is_waitlist": True,
+            "error": None,
+        }
 
         await handle_rsvp(mock_view, mock_interaction, "accepted")
-        mock_update_rsvp.assert_called_once_with("EVT-100", mock_interaction.user.id, "wait_accepted")
+        mock_atomic.assert_called_once()
         mock_interaction.user.send.assert_called_once()
 
 @pytest.mark.asyncio
@@ -213,18 +231,21 @@ async def test_handle_rsvp_leaving_removes_temp_role(mock_view, mock_interaction
     mock_interaction.user.roles = [mock_role]
     mock_interaction.user.remove_roles = AsyncMock()
 
-    existing_rsvps = [{"user_id": mock_interaction.user.id, "status": "accepted", "joined_at": time.time()}]
-
     with patch("database.get_active_event", new_callable=AsyncMock) as mock_get_ev, \
-         patch("database.get_rsvps_with_time", new_callable=AsyncMock) as mock_get_rsvps, \
-         patch("database.update_rsvp", new_callable=AsyncMock) as mock_update_rsvp, \
+         patch("database.join_or_update_rsvp_atomic", new_callable=AsyncMock) as mock_atomic, \
          patch("cogs.event_ui.rsvp_manager.try_promote_waiting", new_callable=AsyncMock) as mock_promote:
 
         mock_get_ev.return_value = db_event
-        mock_get_rsvps.return_value = existing_rsvps
+        mock_atomic.return_value = {
+            "target_status": "declined",
+            "old_status": "accepted",
+            "is_full": False,
+            "is_waitlist": False,
+            "error": None,
+        }
 
         await handle_rsvp(mock_view, mock_interaction, "declined")
-        mock_update_rsvp.assert_called_once_with("EVT-100", mock_interaction.user.id, "declined")
+        mock_atomic.assert_called_once()
         mock_interaction.user.remove_roles.assert_called_once_with(mock_role, reason="RSVP negative/left: EVT-100")
         mock_promote.assert_called_once()
 
@@ -281,7 +302,7 @@ async def test_process_lobby_transition():
     with patch("database.get_active_event", new_callable=AsyncMock) as mock_get_ev, \
          patch("database.get_rsvps", new_callable=AsyncMock) as mock_get_rsvps, \
          patch("database.set_lobby_start_time", new_callable=AsyncMock) as mock_set_lobby, \
-         patch("database.update_event_time", new_callable=AsyncMock) as mock_up_time, \
+         patch("database.update_event_time", new_callable=AsyncMock), \
          patch("database.get_guild_setting", new_callable=AsyncMock) as mock_setting:
 
         mock_get_ev.return_value = db_event
@@ -375,14 +396,16 @@ async def test_handle_rsvp_waitlist_limit_reached(mock_view, mock_interaction):
         "use_waiting_list": True,
         "extra_data": '{"role_limits": {"accepted": 1, "waiting_list_limit": 1}}'
     }
-    rsvps = [
-        {"user_id": 101, "status": "accepted", "rsvp_time": time.time() - 100},
-        {"user_id": 102, "status": "wait_accepted", "rsvp_time": time.time() - 50},
-    ]
     with patch("database.get_active_event", new_callable=AsyncMock) as mock_get, \
-         patch("database.get_rsvps_with_time", new_callable=AsyncMock) as mock_rsvps:
+         patch("database.join_or_update_rsvp_atomic", new_callable=AsyncMock) as mock_atomic:
         mock_get.return_value = db_event
-        mock_rsvps.return_value = rsvps
+        mock_atomic.return_value = {
+            "target_status": None,
+            "old_status": None,
+            "is_full": True,
+            "is_waitlist": False,
+            "error": "waitlist_full",
+        }
         await handle_rsvp(mock_view, mock_interaction, "accepted")
         mock_interaction.response.send_message.assert_called_once()
 
@@ -395,13 +418,16 @@ async def test_handle_rsvp_position_full_no_waitlist(mock_view, mock_interaction
         "use_waiting_list": False,
         "extra_data": '{"role_limits": {"accepted": 1}}'
     }
-    rsvps = [
-        {"user_id": 101, "status": "accepted", "rsvp_time": time.time() - 100}
-    ]
     with patch("database.get_active_event", new_callable=AsyncMock) as mock_get, \
-         patch("database.get_rsvps_with_time", new_callable=AsyncMock) as mock_rsvps:
+         patch("database.join_or_update_rsvp_atomic", new_callable=AsyncMock) as mock_atomic:
         mock_get.return_value = db_event
-        mock_rsvps.return_value = rsvps
+        mock_atomic.return_value = {
+            "target_status": None,
+            "old_status": None,
+            "is_full": True,
+            "is_waitlist": False,
+            "error": "position_full",
+        }
         await handle_rsvp(mock_view, mock_interaction, "accepted")
         mock_interaction.response.send_message.assert_called_once()
 
@@ -415,16 +441,19 @@ async def test_handle_rsvp_max_accepted_capacity_overflow(mock_view, mock_intera
         "use_waiting_list": True,
         "max_accepted": 1,
     }
-    rsvps = [
-        {"user_id": 101, "status": "accepted", "rsvp_time": time.time() - 100}
-    ]
     with patch("database.get_active_event", new_callable=AsyncMock) as mock_get, \
-         patch("database.get_rsvps_with_time", new_callable=AsyncMock) as mock_rsvps, \
-         patch("database.update_rsvp", new_callable=AsyncMock) as mock_upd, \
+         patch("database.join_or_update_rsvp_atomic", new_callable=AsyncMock) as mock_atomic, \
          patch("cogs.event_ui.rsvp_manager.try_promote_waiting", new_callable=AsyncMock):
         mock_get.return_value = db_event
-        mock_rsvps.return_value = rsvps
+        mock_atomic.return_value = {
+            "target_status": "wait_accepted",
+            "old_status": None,
+            "is_full": False,
+            "is_waitlist": True,
+            "error": None,
+        }
         await handle_rsvp(mock_view, mock_interaction, "accepted")
-        mock_upd.assert_called_once_with("EVT-100", mock_interaction.user.id, "wait_accepted")
+        mock_atomic.assert_called_once()
+        mock_interaction.user.send.assert_called_once()
 
 

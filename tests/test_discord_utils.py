@@ -1,10 +1,13 @@
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+
 from utils.discord_utils import (
     resolve_channel,
     resolve_role,
     resolve_user,
 )
+
 
 @pytest.mark.asyncio
 async def test_resolve_channel_mention_and_id():

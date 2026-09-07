@@ -1,264 +1,221 @@
 # Nexus Discord Event Bot
 
-Nexus is a modular, enterprise-grade Discord event management bot built with Python 3, `discord.py`, and PostgreSQL. It provides an interactive UI-driven workflow for scheduling events, managing recurring series, coordinating fill-to-start lobbies, tracking RSVPs and attendance, auditing reliability, and exporting data to standard formats like CSV and iCalendar.
+[![Python Version](https://img.shields.io/badge/python-3.12%20%7C%203.14-blue.svg)](https://www.python.org/)
+[![discord.py](https://img.shields.io/badge/discord.py-v2.6%2B-5865F2.svg)](https://github.com/Rapptz/discord.py)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg)](https://www.postgresql.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Tests](https://img.shields.io/badge/tests-289%20passed-brightgreen.svg)](tests/)
+[![Docker Ready](https://img.shields.io/badge/docker-ready-2496ED.svg)](Dockerfile)
+[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-orange.svg)](.github/workflows/ci.yml)
+
+Enterprise-grade Discord event and attendance orchestration platform designed for gaming communities, esports tournaments, and organizational servers. Built on discord.py and asyncpg, Nexus delivers atomic concurrency control, PostgreSQL row-level locking, automated reminder dispatching, Prometheus observability, and container orchestration readiness.
 
 ---
 
-## Key Features
+## Architectural Highlights
 
-- **Interactive Event Wizard:** Visual creation and editing modal workflow for single events, recurring event series, and fill-to-start lobbies without memorizing complex syntax.
-- **Dynamic RSVP System:** Real-time event embed updates with configurable capacity caps, waitlists, temporary role assignments upon signup, and role-based signup restrictions.
-- **Multi-Slot Automated Reminders:** Configure up to 5 reminder slots per event with customizable offsets, delivery methods (channel ping or direct message), and targeted recipient groups (confirmed attendees, waitlist, etc.).
-- **Fill-to-Start Lobbies:** Create time-flexible lobbies that notify organizers or automatically activate when the target participant count is reached.
-- **Recurring Series Management:** Native recurrence engine supporting daily, weekly, bi-weekly, and monthly intervals with rolling automatic reposts and occurrence limits.
-- **Attendance & Reliability Audits:** Mark post-event participant presence (Present, Late, No-Show) and generate guild-level reliability metrics and no-show audit leaderboards.
-- **Data Exporting:** Export guild event history and participant RSVP records to CSV (optimized for Google Sheets / Excel) and future schedules to iCalendar (.ics) files.
-- **Draft Management:** Automatically save in-progress event configurations and resume them at any time.
-- **Customizable Branding & Emojis:** Per-server and global custom emoji sets for status indicators, buttons, and embeds.
-- **Multi-Language Support (i18n):** Native support for English and Hungarian, with in-Discord override wizards for custom server strings.
-- **Visual Server Administration:** Interactive `/setup` console for configuring server-wide defaults, channels, roles, timezones, and templates.
-- **Master Operations Hub:** Isolated administrative controls for bot operators to inspect global database metrics, control presence rotations, and manage system-wide assets.
+- Concurrency and Transaction Safety: Employs PostgreSQL row-level locks (`SELECT ... FOR UPDATE`) during RSVP submissions to prevent race conditions and event overbooking under high concurrent load.
+- Referential Integrity: Database schema enforces foreign key constraints with `ON DELETE CASCADE`, guaranteeing clean cascade deletions without orphaned records.
+- Asynchronous Non-Blocking Workers: Event evaluations and notifications execute concurrently using bounded semaphores to prevent event-loop starvation and respect Discord REST API rate limits.
+- Bounded Self-Evicting Cache: In-memory LRU TTL caches prevent memory leaks across cooldowns, guild configurations, and translation layers.
+- Observability and Container Readiness: Built-in asynchronous HTTP server exposes Prometheus metrics (`/metrics`), liveness probes (`/healthz`), and readiness probes (`/readyz`).
+- Hardened Production Container: Multi-stage slim Docker image executing under a non-privileged user with automated container healthcheck directives.
 
 ---
 
-## Technology Stack
+## Core Capabilities
 
-- **Runtime:** Python 3.10+ / 3.11+
-- **Discord Framework:** `discord.py` (v2.6+)
-- **Database:** PostgreSQL with `asyncpg` for asynchronous connection pooling
-- **Configuration:** JSON with comments (`JSONC`) and `.env` environment variables
-- **Timezone & Date Processing:** `python-dateutil`
+### 1. Event Lifecycle and Wizard
+- Interactive modal and view wizard for single events, recurring event series, and fill-to-start lobbies.
+- Intelligent recurrence engine supporting daily, weekly, monthly, interval-based schedules, and custom day-of-week selections.
+- Configurable post-event grace periods (default 12 hours) allowing organizers and attendees to audit attendance before archival.
+- Fallback channel resolution ensuring recurring events are never dropped due to cold client-side caches.
 
----
+### 2. RSVP and Roster Management
+- Flexible RSVP states: accepted, tentative, declined, and automated waiting lists.
+- Role-based limits and tier-based registration restrictions.
+- Atomic waiting list promotions when accepted slots open.
+- Temporary Discord role generation and assignment for participants, with graceful cleanup on event conclusion.
 
-## Project Structure
+### 3. Multi-Slot Reminder Dispatching
+- Up to 5 customizable reminder slots per event.
+- Granular delivery methods: channel ping, direct message (DM), or hybrid.
+- Non-blocking parallel DM dispatching throttled via semaphores to avoid Discord 429 rate limits.
+- Safe template formatting preventing denial-of-service vulnerabilities.
 
-```text
-nexus/
-├── cogs/
-│   ├── attendance/        # Attendance marking and tracking views
-│   ├── emoji_wizard/      # Visual emoji set customization
-│   ├── event_commands/    # Primary user and administrative event commands
-│   ├── event_ui/          # Persistent dynamic embeds and interaction views
-│   ├── event_wizard/      # Multi-step event creation and editing wizard
-│   ├── master_commands/   # Isolated bot-owner global operations
-│   ├── message_wizard/    # Visual translation and string customization
-│   ├── scheduler_task/    # Background workers for reminders, recurrence, and lifecycle
-│   └── server_setup/      # Interactive server configuration dashboard
-├── database/
-│   ├── migrations/        # SQL migration scripts (001_initial_schema.sql)
-│   ├── repositories/      # Domain-specific async database access layers
-│   ├── connection.py      # AsyncPG connection pool management
-│   └── __init__.py        # Database manager interface
-├── locales/               # Localization strings (en.json, hu.json, templates)
-├── services/              # Core business logic services
-│   ├── attendance_service.py
-│   ├── event_service.py
-│   ├── export_service.py
-│   ├── notification_service.py
-│   └── recurrence_service.py
-├── utils/                 # Utility modules (auth, config, i18n, logger, presence, etc.)
-├── config.example.json    # Bot configuration template
-├── .env.example           # Environment variables template
-├── requirements.txt       # Production dependencies
-└── main.py                # Bot application entrypoint and lifecycle coordinator
-```
+### 4. Attendance and Reliability Auditing
+- Real-time interactive attendance views for event organizers.
+- Attendance verification toggles (`present` vs `no_show`).
+- Global and guild-level member reliability scores and no-show statistics.
+- Export capabilities for external auditing and record-keeping.
+
+### 5. Internationalization (i18n)
+- Dynamic multi-language localization system with fallback chains.
+- Per-guild custom translation overrides stored in PostgreSQL.
+- Cached configuration layer with automatic cache invalidation upon configuration updates and server resets.
 
 ---
 
-## Prerequisites
+## Observability and Healthcheck Endpoints
 
-Before setting up the bot, ensure you have:
+Nexus includes an asynchronous HTTP service powered by `aiohttp.web` running on port `8080` (configurable via `HEALTH_SERVER_PORT`).
 
-1. **Python 3.10 or higher** installed.
-2. **PostgreSQL 14 or higher** running locally or on a remote host.
-3. A **Discord Bot Application** created in the [Discord Developer Portal](https://discord.com/developers/applications) with the following Privileged Gateway Intents enabled:
-   - **Server Members Intent**
-   - **Message Content Intent**
+| Endpoint | Method | Purpose | Response |
+| :--- | :--- | :--- | :--- |
+| `/healthz` | GET | Liveness probe for Docker and Kubernetes | HTTP 200 with uptime and service status |
+| `/readyz` | GET | Readiness probe checking Gateway and Database | HTTP 200 if healthy, HTTP 503 if degraded |
+| `/metrics` | GET | Prometheus scraper endpoint | Standard Prometheus text exposition (`text/plain; version=0.0.4`) |
+| `/` | GET | Diagnostic index and service metadata | JSON payload with active endpoints |
+
+### Exposed Prometheus Metrics
+- `nexus_uptime_seconds`: Total runtime of the bot in seconds.
+- `nexus_gateway_latency_seconds`: Discord WebSocket heartbeat latency.
+- `nexus_guilds_count`: Total connected Discord guilds.
+- `nexus_cached_users_count`: Total users cached in client memory.
+- `nexus_active_events_count`: Active events stored in the database.
+- `nexus_db_total_rsvps`: Total RSVP records in database.
+- `nexus_db_pool_size` / `nexus_db_pool_free`: PostgreSQL connection pool utilization.
+- `nexus_commands_total{command, status}`: Counter of executed application commands.
+- `nexus_errors_total{type}`: Counter of caught application errors.
+- `nexus_reminders_dispatched_total{method}`: Counter of dispatched reminders.
+- `nexus_rsvps_action_total{status}`: Counter of user RSVP actions.
 
 ---
 
-## Installation & Setup
+## Quick Start with Docker Compose
 
-### 1. Clone the Repository
+The fastest way to deploy Nexus in production is via Docker Compose:
 
+### 1. Clone Repository
 ```bash
 git clone https://github.com/stargate91/discord-event-bot.git
 cd discord-event-bot
 ```
 
-### 2. Create and Activate a Virtual Environment
-
-On Linux / macOS:
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-On Windows (PowerShell):
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-```
-
-### 3. Install Dependencies
-
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### 4. Configure Environment Variables
-
-Copy `.env.example` to `.env`:
-
+### 2. Configure Environment
+Create a `.env` file from the provided example:
 ```bash
 cp .env.example .env
 ```
-
-Edit `.env` and fill in your credentials:
-
+Edit `.env` and set your credentials:
 ```env
-# Discord Bot Authentication Token
 BOT_TOKEN=your_discord_bot_token_here
-
-# PostgreSQL Database Connection URL
-DATABASE_URL=postgresql://username:password@localhost:5432/discord_events
-
-# Optional Master Guild IDs (comma-separated, enables /master commands)
-MASTER_GUILD_IDS=123456789012345678
-
-# Optional Premium Guild IDs (comma-separated)
-PREMIUM_GUILD_IDS=123456789012345678
+POSTGRES_USER=nexus
+POSTGRES_PASSWORD=your_secure_password_here
+POSTGRES_DB=discord_events
 ```
 
-### 5. Configure Bot Settings
-
-Copy `config.example.json` to `config.json`:
-
+### 3. Launch Services
 ```bash
-cp config.example.json config.json
+docker compose up -d
 ```
 
-Adjust the configuration file parameters as needed:
+### 4. Verify Health Status
+```bash
+docker compose ps
+curl -f http://localhost:8080/readyz
+```
+
+---
+
+## Manual Local Installation
+
+### Prerequisites
+- Python 3.12 or later
+- PostgreSQL 16 server
+- Git
+
+### Installation Steps
+
+1. Clone the repository and navigate into the directory:
+   ```bash
+   git clone https://github.com/stargate91/discord-event-bot.git
+   cd discord-event-bot
+   ```
+
+2. Create and activate a virtual environment:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+
+3. Install production dependencies:
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+4. Configure the environment variables in `.env`:
+   ```env
+   BOT_TOKEN=your_discord_bot_token_here
+   DATABASE_URL=postgresql://nexus:password@localhost:5432/discord_events
+   HEALTH_SERVER_PORT=8080
+   HEALTH_SERVER_HOST=0.0.0.0
+   ```
+
+5. Run the bot:
+   ```bash
+   python main.py
+   ```
+   Database migrations (`001_initial_schema.sql`, `002_cascade_foreign_keys_and_types.sql`) are applied automatically on startup.
+
+---
+
+## Configuration Reference
+
+Nexus reads server and feature settings from `config.json` and PostgreSQL `guild_settings`.
 
 ```json
 {
-  "master_guild_ids": [],
-  "premium_guild_ids": [],
-  "language": "en",
   "command_prefix": "!",
-  "command_suffix": "",
+  "language": "hu",
+  "master_guild_ids": [],
   "globals": {
     "logging_level": "INFO",
-    "wizard_timeout": 600,
-    "version": "v2.2.0"
+    "health_server": {
+      "enabled": true,
+      "port": 8080,
+      "host": "0.0.0.0"
+    }
   }
 }
 ```
 
-### 6. Database Initialization
+---
 
-Database tables, constraints, and indexes are automatically initialized and migrated when the bot boots for the first time via `main.py` and `database/migrations/001_initial_schema.sql`.
+## Testing and Quality Assurance
 
-### 7. Run the Bot
+The test suite covers unit logic, concurrency safety, cache invalidation, API rate-limiting semaphores, and live PostgreSQL integrations.
 
+### Run Automated Tests
 ```bash
-python main.py
+# Run complete test suite with coverage
+python -m pytest -v --cov=. --cov-report=term-missing
+```
+
+### Run Static Analysis and Linter
+```bash
+# Run Ruff linting across entire project
+python -m ruff check cogs database services utils tests main.py
+```
+
+### Run Real PostgreSQL Integration Tests
+To execute end-to-end database tests against a live PostgreSQL instance:
+```bash
+TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/test_db python -m pytest tests/test_real_postgres_integration.py
 ```
 
 ---
 
-## Command Reference
+## CI/CD Pipeline
 
-### Event Management (`/event`)
-
-| Command | Description | Access |
-| --- | --- | --- |
-| `/event create` | Opens the interactive wizard to design and schedule a new event or recurring series. | Admin |
-| `/event lobby` | Opens the creation wizard configured for fill-to-start lobbies. | Admin |
-| `/event edit <event_id>` | Opens the wizard to edit an existing event or series. | Admin |
-| `/event list` | Displays all currently active events in the server. | Admin |
-| `/event cancel <event_id>` | Marks an event as cancelled and updates the message embed. | Admin |
-| `/event postpone <event_id>` | Postpones an event to a new date/time with optional attendee notification. | Admin |
-| `/event activate <event_id>` | Re-activates a previously cancelled or postponed event. | Admin |
-| `/event remove <event_id>` | Deletes the event embed and cleans up associated roles and records. | Admin |
-| `/event end <event_id>` | Manually closes an active event and archives it into past history. | Admin |
-| `/event sheets` | Exports server event summaries and RSVP records as CSV files. | Admin |
-| `/event ics` | Generates a standard `.ics` iCalendar file of all upcoming server events. | Everyone |
-| `/event my-events` | Interactive menu listing events you are organizing or attending. | Everyone |
-| `/event history` | View your personal past event attendance record. | Everyone |
-
-### Server Administration & Auditing
-
-| Command | Description | Access |
-| --- | --- | --- |
-| `/setup` | Opens the visual configuration dashboard to manage server defaults, channels, timezones, and roles. | Admin |
-| `/admin check no-show` | Generates reliability reports for a specific event or a server-wide no-show leaderboard. | Admin |
-| `/admin messages` | Opens the string customization wizard to override bot messages and translations. | Admin |
-| `/admin emojis` | Customizes button and status indicator emoji sets for the server. | Admin |
-| `/attendance manage <event_id>` | Interactive interface to mark attendees as Present, Late, or No-Show. | Admin |
-
-### Event Drafts (`/draft`)
-
-| Command | Description | Access |
-| --- | --- | --- |
-| `/draft continue <draft_id>` | Resumes a previously saved event creation session. | Everyone |
-| `/draft delete <draft_id>` | Deletes a saved draft. | Everyone |
-| `/draft delete-all` | Clears all saved drafts belonging to the user in the server. | Everyone |
-
-### Master Administration (`/master`)
-
-*Note: These commands are only available in guilds configured under `master_guild_ids`.*
-
-| Command | Description | Access |
-| --- | --- | --- |
-| `/master stats` | Shows global operational stats: active guilds, events, RSVPs, latency, and system versions. | Bot Master |
-| `/master status` | Visual console to configure dynamic rotating bot presence messages. | Bot Master |
-| `/master global-sets` | Manage default emoji sets available across all servers. | Bot Master |
-| `/master reset-global-sets` | Restores global emoji sets to factory code defaults. | Bot Master |
-
-### Legacy Prefix Commands
-
-| Command | Description | Access |
-| --- | --- | --- |
-| `!sync [guild\|global\|copy]` | Synchronizes slash application commands with the Discord API. | Bot Master |
-| `!clear_commands` | Clears and resyncs command trees in case of registration conflicts. | Bot Master |
+Continuous integration is orchestrated via GitHub Actions (`.github/workflows/ci.yml`):
+- `lint-and-test`: Spins up an automated `postgres:16-alpine` service container, executes `ruff check`, and runs the full `pytest` suite with live PostgreSQL migrations and concurrency tests.
+- `docker-build`: Builds and validates the production Docker image against container specifications.
 
 ---
 
-## Configuration Details
+## License
 
-### `config.json` Options
-
-- **`master_guild_ids`** (array of strings): Discord Guild IDs where master-only commands (`/master`) should be registered.
-- **`premium_guild_ids`** (array of strings): Discord Guild IDs with premium tier limits.
-- **`language`** (string): Default fallback language code (`"en"` for English, `"hu"` for Hungarian).
-- **`command_prefix`** (string): Prefix used for text fallback and maintenance commands (default: `!` ).
-- **`command_suffix`** (string): Optional suffix appended to slash command names (useful when running development and staging instances alongside each other).
-- **`globals.logging_level`** (string): Log verbosity level (`"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"`, `"CRITICAL"`).
-- **`globals.wizard_timeout`** (integer): Timeout in seconds for interactive UI wizard sessions (default: `600`).
-- **`globals.version`** (string): Version identifier displayed in status embeds and master telemetry.
-
----
-
-## Background Workers & Scheduler
-
-The bot includes an asynchronous scheduler cog (`cogs.scheduler_task`) running at regular intervals to handle automated tasks:
-
-1. **Reminder Dispatcher:** Periodically scans for due reminder slots and sends configured channel mentions or direct messages.
-2. **Event Lifecycle Monitor:** Automatically updates event statuses when start times are reached and transitions finished events to history.
-3. **Recurring Series Generator:** Detects when recurring events finish and automatically posts the next scheduled occurrence based on configured recurrence intervals and offsets.
-4. **Temporary Role Cleanup:** Removes temporary event participant roles after events conclude.
-5. **Rotating Presence Engine:** Updates the bot's Discord activity text based on active event statistics or customized status presets.
-
----
-
-## Localization (i18n)
-
-Nexus includes a robust localization architecture:
-- Core language catalogs are stored in `locales/en.json` (English) and `locales/hu.json` (Hungarian).
-- Servers can configure their preferred language using `/setup`.
-- Individual text strings and embeds can be customized per-guild using `/admin messages`.
-- Contextual formatting supports dynamic interpolation for timestamps, counts, titles, and error reasons.
-
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

@@ -1,9 +1,8 @@
-import json
 import discord
 from discord import ui
 import database
 from utils.i18n import t
-from utils.logger import log
+from utils.extra_data import parse_extra_data
 
 class AdvancedSettingsModal(ui.Modal):
     """Modal for configuring advanced event settings (e.g. waiting list limit)."""
@@ -22,18 +21,9 @@ class AdvancedSettingsModal(ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         val = str(self.wait_limit_input.value)
         wait_limit = int(val) if val.isdigit() else 0
-        extra = self.wizard_view.data.get("extra_data")
-        if not extra:
-            extra = {}
-        elif isinstance(extra, str):
-            try:
-                extra = json.loads(extra)
-            except Exception:
-                extra = {}
-        if not isinstance(extra, dict):
-            extra = {}
-        extra["waiting_list_limit"] = wait_limit
-        self.wizard_view.data["extra_data"] = json.dumps(extra)
+        extra_dto = parse_extra_data(self.wizard_view.data.get("extra_data"))
+        extra_dto.waiting_list_limit = wait_limit
+        self.wizard_view.data["extra_data"] = extra_dto.to_json()
         await self.wizard_view.save_to_draft()
         await self.wizard_view.refresh_message(interaction)
 
@@ -45,15 +35,8 @@ class RoleLimitsModal(ui.Modal):
         self.wizard_view = wizard_view
         self.options = icon_set_data.get("options", [])
         
-        extra_data = wizard_view.data.get("extra_data")
-        existing_limits = {}
-        if extra_data:
-            try:
-                d = json.loads(extra_data) if isinstance(extra_data, str) else extra_data
-                if isinstance(d, dict):
-                    existing_limits = d.get("role_limits", {})
-            except Exception as e:
-                log.debug("RoleLimitsModal extra_data: %s", e)
+        extra_dto = parse_extra_data(wizard_view.data.get("extra_data"))
+        existing_limits = extra_dto.role_limits
             
         lines = []
         for opt in self.options:
@@ -86,18 +69,9 @@ class RoleLimitsModal(ui.Modal):
             if matched_id and right.isdigit():
                 role_limits[matched_id] = int(right)
                 
-        extra = self.wizard_view.data.get("extra_data")
-        if not extra:
-            extra = {}
-        elif isinstance(extra, str):
-            try:
-                extra = json.loads(extra)
-            except Exception:
-                extra = {}
-        if not isinstance(extra, dict):
-            extra = {}
-        extra["role_limits"] = role_limits
-        self.wizard_view.data["extra_data"] = json.dumps(extra)
+        extra_dto = parse_extra_data(self.wizard_view.data.get("extra_data"))
+        extra_dto.role_limits = role_limits
+        self.wizard_view.data["extra_data"] = extra_dto.to_json()
         await self.wizard_view.save_to_draft()
         await self.wizard_view.refresh_message(interaction)
 

@@ -1,8 +1,8 @@
-import json
 import discord
 from discord import ui
 from utils.i18n import t
 from utils.emoji_utils import make_select_option, make_button
+from utils.extra_data import parse_extra_data
 from ..modals import (
     RoleLimitsModal,
     NotificationSettingsModal,
@@ -48,16 +48,8 @@ def build_settings_section(view) -> list[ui.Item]:
         # Waiting list toggle button
         async def wait_cb(it: discord.Interaction):
             has_global_cap = int(view.data.get("max_accepted") or 0) > 0
-            has_role_cap = False
-            extra = view.data.get("extra_data")
-            if extra:
-                try:
-                    d = json.loads(extra) if isinstance(extra, str) else extra
-                    rl = d.get("role_limits", {})
-                    if any(int(v) > 0 for v in rl.values()):
-                        has_role_cap = True
-                except Exception:
-                    pass
+            extra_dto = parse_extra_data(view.data.get("extra_data"))
+            has_role_cap = any(int(v) > 0 for v in extra_dto.role_limits.values())
 
             if not has_global_cap and not has_role_cap:
                 if not view.data.get("use_waiting_list", False):

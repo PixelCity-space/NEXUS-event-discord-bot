@@ -1,22 +1,24 @@
-import time
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
+
 import discord
+import pytest
+
 from cogs.event_wizard.modals import (
-    SingleEventModal,
-    Step1Modal,
-    SingleEventSupplementaryModal,
-    Step2Modal,
-    Step3Modal,
     AdvancedSettingsModal,
-    RoleLimitsModal,
-    RsvpRolesModal,
+    ColorModal,
+    CreatorModal,
     NotificationSettingsModal,
     ReminderMessagesModal,
     ReminderOffsetModal,
-    CreatorModal,
-    ColorModal,
+    RoleLimitsModal,
+    RsvpRolesModal,
+    SingleEventModal,
+    SingleEventSupplementaryModal,
+    Step1Modal,
+    Step2Modal,
+    Step3Modal,
 )
+
 
 @pytest.fixture
 def mock_view():

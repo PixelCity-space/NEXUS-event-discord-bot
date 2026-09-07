@@ -1,8 +1,8 @@
 from utils.templates import (
-    get_template_data,
     get_active_set,
-    ICON_SET_TEMPLATES,
+    get_template_data,
 )
+
 
 def test_get_template_data_standard():
     """Test loading and mapping keys for the 'standard' icon set."""

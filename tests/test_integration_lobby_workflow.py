@@ -1,13 +1,13 @@
-import time
-from utils.lobby_utils import (
-    positive_status_ids,
-    effective_lobby_capacity,
-    role_limits_from_extra,
-    count_positive_rsvps,
-    lobby_is_full,
-)
 from services.recurrence_service import is_lobby_expired
 from utils.enums import EventStatus
+from utils.lobby_utils import (
+    count_positive_rsvps,
+    effective_lobby_capacity,
+    lobby_is_full,
+    positive_status_ids,
+    role_limits_from_extra,
+)
+
 
 def test_integration_lobby_initialization_to_full_capacity():
     """Integration: Lobby setup -> role limit aggregation -> RSVP registrations until filled."""

@@ -107,3 +107,28 @@ async def is_master(ctx_or_int: Union[discord.Interaction, commands.Context]) ->
         return await is_admin(ctx_or_int)
 
     return False
+
+
+async def is_owner(ctx_or_int: Union[discord.Interaction, commands.Context]) -> bool:
+    """
+    Absolute highest authority check: Returns True ONLY if the invoking user is the Bot Owner.
+    Required for dangerous global operations like global command tree clearing and global sync.
+    """
+    if isinstance(ctx_or_int, discord.Interaction):
+        user = ctx_or_int.user
+        bot = ctx_or_int.client
+    elif isinstance(ctx_or_int, commands.Context):
+        user = ctx_or_int.author
+        bot = ctx_or_int.bot
+    else:
+        try:
+            user = getattr(ctx_or_int, "author", None) or getattr(ctx_or_int, "user", None)
+            bot = getattr(ctx_or_int, "bot", None) or getattr(ctx_or_int, "client", None)
+        except Exception:
+            return False
+
+    if not user or not bot:
+        return False
+
+    return bool(await bot.is_owner(user))
+

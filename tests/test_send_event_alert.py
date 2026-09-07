@@ -1,6 +1,9 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+
 from services.notification_service import send_event_alert
+
 
 @pytest.mark.asyncio
 async def test_send_event_alert_method_none():
@@ -50,3 +53,35 @@ async def test_send_event_alert_temp_role():
     assert stats["channel_sent"] == 1
     call_kwargs = mock_channel.send.call_args.kwargs
     assert "<@&555444>" in call_kwargs["content"]
+
+
+@pytest.mark.asyncio
+async def test_send_event_alert_concurrent_dms():
+    """Test send_event_alert dispatches DMs concurrently to multiple users with rate limiting."""
+    bot = MagicMock()
+    user_success = MagicMock()
+    user_success.send = AsyncMock()
+    user_fail = MagicMock()
+    user_fail.send = AsyncMock(side_effect=Exception("DMs closed"))
+
+    def get_user_mock(uid):
+        if uid == 999:
+            return user_fail
+        return user_success
+
+    bot.get_user.side_effect = get_user_mock
+
+    user_ids = [101, 102, 103, 104, 999]
+    stats = await send_event_alert(
+        bot=bot,
+        channel_id=None,
+        target_user_ids=user_ids,
+        method="dm",
+        dm_content="Personal reminder",
+    )
+
+    assert stats["channel_sent"] == 0
+    assert stats["dms_sent"] == 4
+    assert stats["dms_failed"] == 1
+    assert user_success.send.call_count == 4
+    assert user_fail.send.call_count == 1

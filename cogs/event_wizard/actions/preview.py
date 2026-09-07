@@ -1,11 +1,11 @@
 import uuid
-import json
 import datetime
 import discord
 from dateutil import parser, tz
 from database import DEFAULT_TIMEZONE
 from utils.i18n import t
 from utils.logger import log
+from utils.extra_data import parse_extra_data
 
 async def process_save_preview(wizard_view, interaction: discord.Interaction):
     """Processes the Save & Preview logic and renders the preview card."""
@@ -114,14 +114,8 @@ async def process_save_preview(wizard_view, interaction: discord.Interaction):
         icon_set_key = wizard_view.data.get("icon_set", "standard")
         active_set = get_active_set(icon_set_key)
         
-        extra_data = wizard_view.data.get("extra_data")
-        role_limits_overrides = {}
-        if extra_data:
-            try:
-                d = json.loads(extra_data) if isinstance(extra_data, str) else extra_data
-                role_limits_overrides = d.get("role_limits", {})
-            except Exception as e:
-                log.debug("process_save_preview role_limits: %s", e)
+        extra_dto = parse_extra_data(wizard_view.data.get("extra_data"))
+        role_limits_overrides = extra_dto.role_limits
         
         pos_statuses = []
         if "positive" in active_set:

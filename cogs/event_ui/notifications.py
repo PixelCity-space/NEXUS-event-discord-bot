@@ -1,11 +1,12 @@
 import time
-import json
 import discord
 import database
 from utils.emojis import PING
 from utils.emoji_utils import resolve_placeholders
 from utils.i18n import t
 from utils.logger import log
+from utils.text_utils import safe_format
+from utils.extra_data import parse_extra_data
 from services.notification_service import resolve_target_recipients, send_event_alert
 
 async def send_lobby_fill_notifications(bot: discord.Client, db_event: dict, active_set: dict, guild_id_int: int) -> None:
@@ -115,17 +116,11 @@ async def notify_promotion(bot: discord.Client, interaction: discord.Interaction
         return
 
     role_name = opt.get("label") or opt.get("list_label") or opt["id"]
-    extra = event_conf.get("extra_data")
-    custom_msg = None
-    if extra:
-        try:
-            d = json.loads(extra) if isinstance(extra, str) else extra
-            custom_msg = d.get("custom_promo_msg")
-        except Exception as e:
-            log.debug("notify_promotion extra_data: %s", e)
+    extra_dto = parse_extra_data(event_conf.get("extra_data"))
+    custom_msg = extra_dto.custom_promo_msg
 
     if custom_msg:
-        msg = custom_msg.format(user_id=user_id, role=role_name, emoji=opt.get("emoji", ""), title=event_conf.get("title", ""))
+        msg = safe_format(custom_msg, user_id=user_id, role=role_name, emoji=opt.get("emoji", ""), title=event_conf.get("title", ""))
     else:
         msg = t("MSG_PROMOTED_DEFAULT", guild_id=interaction.guild_id, user_id=user_id, role=role_name, emoji=opt.get("emoji", ""))
 

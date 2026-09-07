@@ -1,23 +1,25 @@
-import time
 import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from utils.calendar_utils import (
-    get_google_calendar_url,
-    generate_ics_batch,
+
+from database.repositories.reminders import (
+    normalize_reminders_for_store,
+    replace_event_reminders,
 )
-from utils.templates import get_template_data
-from utils.enums import EventStatus
 from services.recurrence_service import (
     compute_next_occurrence,
     compute_repost_time,
     evaluate_repost_readiness,
     should_auto_archive_event,
 )
-from database.repositories.reminders import (
-    normalize_reminders_for_store,
-    replace_event_reminders,
+from utils.calendar_utils import (
+    generate_ics_batch,
+    get_google_calendar_url,
 )
+from utils.enums import EventStatus
+from utils.templates import get_template_data
+
 
 def test_integration_event_creation_to_calendar_and_ics():
     """Integration: Event data definition -> Template parsing -> Calendar URL & Batch ICS generation."""
@@ -89,8 +91,9 @@ def test_integration_event_reschedule_and_repost_calculation():
 @pytest.mark.asyncio
 async def test_integration_series_resolution_to_batch_cleanup():
     """Integration: Series event resolution -> multi-item matched retrieval -> cleanup pipeline."""
-    from services.event_service import resolve_target_events, remove_events_with_cleanup
     from unittest.mock import MagicMock
+
+    from services.event_service import remove_events_with_cleanup, resolve_target_events
 
     ev1 = {"event_id": "EV-SERIES-1", "guild_id": "999", "config_name": "mythic_plus", "channel_id": 111, "message_id": 222}
     ev2 = {"event_id": "EV-SERIES-2", "guild_id": "999", "config_name": "mythic_plus", "channel_id": 111, "message_id": 333}
@@ -112,13 +115,25 @@ async def test_integration_series_resolution_to_batch_cleanup():
 def test_integration_event_auto_archival_lifecycle():
     """Integration: One-time event finishes -> evaluated by auto-archival -> transitions to closed."""
     now = 1780000000.0
+    # Before 12h grace period (30 mins after finish), event is kept active for attendance logging
+    active_event = {
+        "event_id": "EVT-ACTIVE",
+        "status": EventStatus.ACTIVE,
+        "recurrence_type": "once",
+        "start_time": now - 7200,
+        "end_time": now - 1800, # Finished 30 mins ago (< 12h grace period)
+        "created_at": now - 10000,
+    }
+    assert should_auto_archive_event(active_event, now) is False
+
+    # After 12h grace period (13 hours after finish), event should be archived
     finished_event = {
         "event_id": "EVT-FIN",
         "status": EventStatus.ACTIVE,
         "recurrence_type": "once",
-        "start_time": now - 7200,
-        "end_time": now - 1800, # Finished 30 mins ago
-        "created_at": now - 10000,
+        "start_time": now - (15 * 3600),
+        "end_time": now - (13 * 3600), # Finished 13 hours ago (> 12h grace period)
+        "created_at": now - (20 * 3600),
     }
 
     # Verify auto-archive decision

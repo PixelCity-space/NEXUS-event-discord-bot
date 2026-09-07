@@ -1,8 +1,8 @@
+import asyncio
 import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-import asyncpg
 
 import database
 from utils.config import config
@@ -10,6 +10,8 @@ from utils.logger import log, set_log_level
 from utils.i18n import t, load_guild_translations
 from utils.templates import ICON_SET_TEMPLATES, get_template_data, load_custom_sets, get_event_conf
 from utils.presence import start_presence_task
+from utils.health_server import start_health_server
+from utils.metrics import metrics
 from cogs.event_ui import DynamicEventView
 
 load_dotenv()
@@ -28,6 +30,8 @@ class EventBot(commands.Bot):
         self.master_guild_ids = config.master_guild_ids
         self.db_manager = database.db_manager
         self.db_pool = None
+        self.presence_task = None
+        self.health_server = None
 
     async def _init_database(self):
         """Initializes PostgreSQL connection pool, schema, and factory default templates."""
@@ -36,12 +40,25 @@ class EventBot(commands.Bot):
             log.error("DATABASE_URL is not set in .env! Cannot start bot.")
             raise RuntimeError("DATABASE_URL is not set in .env! Cannot start bot.")
 
+        min_size = int(os.getenv("DB_POOL_MIN_SIZE", "5"))
+        max_size = int(os.getenv("DB_POOL_MAX_SIZE", "20"))
+        command_timeout = float(os.getenv("DB_COMMAND_TIMEOUT", "30.0"))
+        max_inactive = float(os.getenv("DB_MAX_INACTIVE_LIFETIME", "300.0"))
+        acquire_timeout = float(os.getenv("DB_ACQUIRE_TIMEOUT", "10.0"))
+
         try:
-            pool = await asyncpg.create_pool(dsn)
+            pool = await database.create_pool(
+                dsn,
+                min_size=min_size,
+                max_size=max_size,
+                command_timeout=command_timeout,
+                max_inactive_connection_lifetime=max_inactive,
+                timeout=acquire_timeout,
+            )
             self.db_pool = pool
             await database.set_pool(pool)
             await database.init_db()
-            log.info("Successfully connected to PostgreSQL.")
+            log.info("Successfully connected to PostgreSQL with connection pool (min=%d, max=%d).", min_size, max_size)
 
             if self.master_guild_ids:
                 for gid in self.master_guild_ids:
@@ -116,6 +133,8 @@ class EventBot(commands.Bot):
         """Registers the global application command error handler."""
         @self.tree.error
         async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+            err_type = type(error).__name__
+            metrics.record_error(err_type)
             if isinstance(error, discord.app_commands.CheckFailure):
                 msg = t("ERR_ADMIN_ONLY", guild_id=interaction.guild_id)
                 if interaction.response.is_done():
@@ -143,7 +162,10 @@ class EventBot(commands.Bot):
         self._register_error_handler()
         
         # Start dynamic presence rotation background worker
-        start_presence_task(self)
+        self.presence_task = start_presence_task(self)
+
+        # Start lightweight HTTP liveness, readiness, and metrics server
+        self.health_server = await start_health_server(self)
         log.info("Setup complete. Manual sync available via /master system sync.")
 
     async def on_ready(self):
@@ -152,8 +174,17 @@ class EventBot(commands.Bot):
         log.info("------")
 
     async def close(self):
-        """Gracefully closes database connection pool and discord client connection."""
+        """Gracefully closes database connection pool, background tasks, and discord client connection."""
         log.info("Shutting down Nexus Event Bot...")
+        if self.presence_task and not self.presence_task.done():
+            self.presence_task.cancel()
+            try:
+                await self.presence_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        if self.health_server:
+            await self.health_server.stop()
+            self.health_server = None
         await self.db_manager.close()
         await super().close()
 
