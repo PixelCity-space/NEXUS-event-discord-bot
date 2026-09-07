@@ -11,6 +11,10 @@
 
 Enterprise-grade Discord event and attendance orchestration platform designed for gaming communities, esports tournaments, and organizational servers. Built on discord.py and asyncpg, Nexus delivers atomic concurrency control, PostgreSQL row-level locking, automated reminder dispatching, Prometheus observability, and container orchestration readiness.
 
+<p align="center">
+  <img src="assets/event_card_preview.png" alt="Nexus Event Card Preview" width="650"/>
+</p>
+
 ---
 
 ## Architectural Highlights
